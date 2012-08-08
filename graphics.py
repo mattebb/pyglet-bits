@@ -95,7 +95,11 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     if buttons & mouse.LEFT:
         s = 0.0075
         camera.phi += s * dx
-        camera.theta += s * dy
+        camera.theta -= s * dy
+        if camera.theta > pi:
+            camera.theta = pi
+        elif camera.theta < 0.0001:
+            camera.theta = 0.0001
         
     if buttons & mouse.RIGHT:
         camera.radius += 0.01 * -dx
@@ -104,7 +108,7 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     
     if buttons & mouse.MIDDLE:
         s = 0.01
-        camera.center[1] -= s * dy
+        camera.center[1] += s * dy
         
         phi = camera.phi + math.pi*0.5
         camera.center[0] += cos(phi) * s * dx
@@ -373,5 +377,5 @@ setup()
 grid = Grid(2, 6, batch, group=gridgroup )
 axes = Axes(0.5, batch, group=axesgroup )
 #torus = Torus(1, 0.3, 20, 10, group=geogroup, batch=batch)
-particles = Particles(1000, 3, batch, group=partgroup)
+particles = Particles(500, 3, batch, group=partgroup)
 pyglet.app.run()
