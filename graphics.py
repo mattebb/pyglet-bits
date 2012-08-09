@@ -45,7 +45,7 @@ alongside other vertex lists with minimal overhead.
 '''
 
 from math import pi, sin, cos
-import random
+from random import random
 
 import pyglet
 from pyglet.gl import *
@@ -90,6 +90,11 @@ class Camera(object):
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
+    
+    import platform
+    if platform.system() != 'Darwin':
+        dy = -dy
+
     
     #if modifiers & pyglet.window.key.MOD_ALT:
     if buttons & mouse.LEFT:
@@ -306,62 +311,76 @@ class Torus(object):
 
 
 class Particles(object):
+    
+    def random_locations(self):
+        def rloc():
+            return (random()-0.5)*self.size
+        return [ [rloc(), rloc()+self.size, rloc()]  for i in range(self.num) ]
+    
+    def flush(self):
+        if hasattr(self, "vertex_list"):
+            self.vertex_list.vertices = [item for sublist in self.locs for item in sublist]
+        else:
+            self.vertices = [item for sublist in self.locs for item in sublist]
+    
     def __init__(self, num, size, batch, group=None):
         
         
-        vertices = [(random.random())*size for i in range(num*3)]
-        colors = [random.random() for i in range(num*3)]
+        self.num = num
+        self.size = size
         
-        self.velocities = [random.random()-0.5 for i in range(num*3)]
-        self.vertex_list = batch.add(len(vertices)//3, 
+        def rvel():
+            return (random()-0.5)*size
+        
+       # self.locs = [ [rloc(), rloc()+size, rloc()]  for i in range(num) ]
+        self.locs = self.random_locations()
+        self.vels = [ [rvel(), rvel(), rvel()]       for i in range(num) ]
+        
+        #self.vertices = []
+        self.flush()
+        
+        colors = [random() for i in range(num*3)]
+
+        self.vertex_list = batch.add(len(self.vertices)//3, 
                                              GL_POINTS,
                                              group,
-                                             ('v3f/stream', vertices),
+                                             ('v3f/stream', self.vertices),
                                              ('c3f/static', colors))
     def delete(self):
         self.vertex_list.delete()
 
-def update(dt):
-    particles.vertex_list.vertices = [v + ((random.random()-0.5) * dt) for v in particles.vertex_list.vertices]
-
-
 def euler_particles(dt):
-    pts = particles.vertex_list.vertices
-    vel = particles.velocities
-    
-    for i in range(len(pts)//3):
-        
-        v = [vel[i*3 + 0], vel[i*3 + 1], vel[i*3 + 2]]
-        p = [pts[i*3 + 0], pts[i*3 + 1], pts[i*3 + 2]]
+
+    for i, p in enumerate(particles.locs):
+        v = particles.vels[i]
         
         # gravity
         v[1] += -9.8*dt
         
         # ground plane collision
         if p[1] < 0:
-            damp = 0.3
+            damp = 0.6
             v[0] = v[0]*damp
             v[1] = -v[1]*damp
             v[2] = v[2]*damp
         
-        # euler
+        # euler 
         p[0] = p[0] + v[0]*dt
         p[1] = p[1] + v[1]*dt
         p[2] = p[2] + v[2]*dt
-        
-        # copy back
-        vel[i*3 + 0] = v[0]
-        vel[i*3 + 1] = v[1]
-        vel[i*3 + 2] = v[2]
+    
+    particles.flush()
+    #particles.vertex_list.vertices = [item for sublist in particles.locs for item in sublist]
 
-        pts[i*3 + 0] = p[0]
-        pts[i*3 + 1] = p[1]
-        pts[i*3 + 2] = p[2]
+@window.event
+def on_key_release(symbol, modifiers):
+    if symbol & pyglet.window.key.SPACE:
+        particles.locs = particles.random_locations()
+        particles.flush()
+        #particles.
+    #    particles.vertex_list.vertices = 
 
-        
-        
 
-#pyglet.clock.schedule(update)
 pyglet.clock.schedule(euler_particles)
 
 geogroup = GeometryGroup()
