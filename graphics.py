@@ -1,54 +1,14 @@
-#!/usr/bin/env python
-# ----------------------------------------------------------------------------
-# pyglet
-# Copyright (c) 2006-2008 Alex Holkner
-# All rights reserved.
-# 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions 
-# are met:
-#
-#  * Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-#  * Redistributions in binary form must reproduce the above copyright 
-#    notice, this list of conditions and the following disclaimer in
-#    the documentation and/or other materials provided with the
-#    distribution.
-#  * Neither the name of pyglet nor the names of its
-#    contributors may be used to endorse or promote products
-#    derived from this software without specific prior written
-#    permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-# FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-# LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-# ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-# ----------------------------------------------------------------------------
-
-'''Displays a rotating torus using the pyglet.graphics API.
-
-This example is very similar to examples/opengl.py, but uses the
-pyglet.graphics API to construct the indexed vertex arrays instead of
-using OpenGL calls explicitly.  This has the advantage that VBOs will
-be used on supporting hardware automatically.  
-
-The vertex list is added to a batch, allowing it to be easily rendered
-alongside other vertex lists with minimal overhead.
-'''
 
 from math import pi, sin, cos
 from random import random
 
+import euclid
+from euclid import Vector3, Point3
+
 import pyglet
 from pyglet.gl import *
+
+from pyglet.window import key
 
 try:
     # Try and create a window with multisampling (antialiasing)
@@ -58,35 +18,88 @@ except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
 
+keys = key.KeyStateHandler()
+window.push_handlers(keys)
+
 @window.event
 def on_resize(width, height):
-    # Override the default on_resize handler to create a 3D projection
-    glViewport(0, 0, width, height)
-    glMatrixMode(GL_PROJECTION)
-    glLoadIdentity()
-    gluPerspective(60., width / float(height), .1, 1000.)
-    glMatrixMode(GL_MODELVIEW)
+    camera.view_update(width, height)
     return pyglet.event.EVENT_HANDLED
 
 from pyglet.window import mouse
 import math
-
 class Camera(object):
+
     def __init__(self):
         self.phi = pi / 2.0
         self.theta = pi * 0.4
-        self.radius = 5
+        self.radius = 5.
+        self.fov = 50.
+        self.clipnear = 0.1
+        self.clipfar = 1000
+        
+        self.center = Vector3(0,0,0)
+        self.up = Vector3(0,1,0)
 
-        self.center = [0,0,0]
-        self.up = [0,1,0]
+        self.needs_update = False
 
     def location(self):
         eyeX = self.radius * cos(self.phi) * sin(self.theta) + self.center[0]
         eyeY = self.radius * cos(self.theta)                 + self.center[1]
         eyeZ = self.radius * sin(self.phi) * sin(self.theta) + self.center[2]
+        return Vector3(eyeX, eyeY, eyeZ)
+        
+    def project_ray(self, px, py):
+        loc = self.location()
+        cam_view = (self.center - loc).normalize()
+        
+        self.cam_h =  cam_view.cross(self.up).normalize()
+        self.cam_v = -1 * cam_view.cross(self.cam_h).normalize()
+        
+        half_v = math.tan(math.radians(self.fov)*0.5) * self.clipnear
+        win = window.get_size()
+        aspect = win[0] / float(win[1])
+        half_h = half_v * aspect
+        
+        # mouse to ndc
+        nx = (px - win[0]*0.5) / (win[0]*0.5)
+        ny = (py - win[1]*0.5) / (win[1]*0.5)
+        
+        self.cam_h *= half_h
+        self.cam_v *= half_v
 
-        return (eyeX, eyeY, eyeZ)
+        click = loc + (cam_view*self.clipnear)  + (nx * self.cam_h) + (ny * self.cam_v)
 
+        '''
+        modelview = (GLdouble * 16)()
+        projection = (GLdouble * 16)()
+        view = (GLint * 4)()
+        
+        glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
+        glGetDoublev (GL_PROJECTION_MATRIX, projection);
+        glGetIntegerv( GL_VIEWPORT, view );
+        
+        wx,wy,wz = GLdouble(),GLdouble(),GLdouble() 
+        gluUnProject(px, py, self.clipnear, modelview, projection, view, wx, wy, wz)
+        click = Vector3(wx.value, wy.value, wz.value)
+        '''
+        dir = (click - loc).normalize()
+        return click, dir
+    
+    def view_update(self, width, height):
+        glViewport(0, 0, width, height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(self.fov, width / float(height), self.clipnear, self.clipfar)
+        glMatrixMode(GL_MODELVIEW)
+
+
+@window.event
+def on_mouse_release(x, y, buttons, modifiers):
+    if buttons & mouse.LEFT:
+        click, dir = camera.project_ray(x, y)
+        #cross = Ray(click, dir, 20)
+        particles.intersect(click, dir)
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
@@ -95,34 +108,51 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     if platform.system() != 'Darwin':
         dy = -dy
 
-    
-    #if modifiers & pyglet.window.key.MOD_ALT:
-    if buttons & mouse.LEFT:
-        s = 0.0075
-        camera.phi += s * dx
-        camera.theta -= s * dy
-        if camera.theta > pi:
-            camera.theta = pi
-        elif camera.theta < 0.0001:
-            camera.theta = 0.0001
+    if modifiers & pyglet.window.key.MOD_SHIFT:
+        if buttons & mouse.RIGHT:
+            camera.fov -= dx
+            if camera.fov < 5.:
+                camera.fov = 5.
+            elif camera.fov > 150:
+                camera.fov = 150
         
-    if buttons & mouse.RIGHT:
-        camera.radius += 0.01 * -dx
-        if camera.radius < 0:
-            camera.radius = 0
-    
-    if buttons & mouse.MIDDLE:
-        s = 0.01
-        camera.center[1] += s * dy
+            winsize = window.get_size()
+            camera.view_update(winsize[0], winsize[1])
+
+    elif keys[key.SPACE]:
+        if buttons & mouse.LEFT:
+            s = 0.0075
+            camera.phi += s * dx
+            camera.theta -= s * dy
+            if camera.theta > pi:
+                camera.theta = pi
+            elif camera.theta < 0.0001:
+                camera.theta = 0.0001
+            
+        if buttons & mouse.RIGHT:
+            camera.radius += 0.01 * -dx
+            if camera.radius < 0:
+                camera.radius = 0
         
-        phi = camera.phi + math.pi*0.5
-        camera.center[0] += cos(phi) * s * dx
-        camera.center[2] += sin(phi) * s * dx
+        if buttons & mouse.MIDDLE:
+            s = 0.01
+            camera.center[1] += s * dy
+            
+            phi = camera.phi + math.pi*0.5
+            camera.center[0] += cos(phi) * s * dx
+            camera.center[2] += sin(phi) * s * dx
+    
+   
 
 
 @window.event
 def on_draw():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    
+    if camera.needs_update:
+        (width, height)= window.get_size()
+        camera.view_update(width, height)
+    
     glLoadIdentity()
 
     cam_loc = camera.location()
@@ -231,6 +261,34 @@ class Axes(object):
         self.vertex_list.delete()
 
 
+class Cross(object):
+    def __init__(self, pt, size, group=None):
+        vertices = [pt[0]-size, pt[1], pt[2], pt[0]+size, pt[1], pt[2], \
+                    pt[0], pt[1], pt[2]-size, pt[0], pt[1], pt[2]+size ]
+        colors = [0.0,1.0,1.0]*2 + [1,0,0]*2
+        self.vertex_list = batch.add(len(vertices)//3, 
+                                             GL_LINES,
+                                             group,
+                                             ('v3f/static', vertices),
+                                             ('c3f/static', colors))
+
+    def delete(self):
+        self.vertex_list.delete()
+
+class Ray(object):
+    def __init__(self, pt, dir, length, group=None):
+        pt2 = pt + (dir*length)
+        vertices = pt[:] + pt2[:]
+        colors = [1.0,0.0,1.0]*2
+        self.vertex_list = batch.add(len(vertices)//3, 
+                                             GL_LINES,
+                                             group,
+                                             ('v3f/static', vertices),
+                                             ('c3f/static', colors))
+
+    def delete(self):
+        self.vertex_list.delete()
+
 class Grid(object):
     def __init__(self, radius, divisions, batch, group=None):
         
@@ -312,6 +370,17 @@ class Torus(object):
 
 class Particles(object):
     
+    def intersect(self, pt, dir):
+        for i, loc in enumerate(self.locs):
+            p = Point3(loc[0], loc[1], loc[2])
+            v = (p - camera.location()).normalize()
+            if v.dot(dir) > 0.999:
+                self.vels[i][0] += random()-0.5
+                self.vels[i][1] += 4 + random()
+                self.vels[i][2] += random()-0.5
+                
+        self.flush()
+    
     def random_locations(self):
         def rloc():
             return (random()-0.5)*self.size
@@ -331,12 +400,10 @@ class Particles(object):
         
         def rvel():
             return (random()-0.5)*size
-        
-       # self.locs = [ [rloc(), rloc()+size, rloc()]  for i in range(num) ]
+
         self.locs = self.random_locations()
         self.vels = [ [rvel(), rvel(), rvel()]       for i in range(num) ]
-        
-        #self.vertices = []
+
         self.flush()
         
         colors = [random() for i in range(num*3)]
@@ -359,19 +426,21 @@ def euler_particles(dt):
         
         # ground plane collision
         if p[1] < 0:
-            damp = 0.6
+            damp = 0.4
             v[0] = v[0]*damp
             v[1] = -v[1]*damp
             v[2] = v[2]*damp
-        
+            
+            p[1] = 0
+
         # euler 
         p[0] = p[0] + v[0]*dt
         p[1] = p[1] + v[1]*dt
         p[2] = p[2] + v[2]*dt
     
     particles.flush()
-    #particles.vertex_list.vertices = [item for sublist in particles.locs for item in sublist]
 
+'''
 @window.event
 def on_key_release(symbol, modifiers):
     if symbol & pyglet.window.key.SPACE:
@@ -379,9 +448,10 @@ def on_key_release(symbol, modifiers):
         particles.flush()
         #particles.
     #    particles.vertex_list.vertices = 
-
+'''
 
 pyglet.clock.schedule(euler_particles)
+
 
 geogroup = GeometryGroup()
 gridgroup = GridGroup()
