@@ -95,7 +95,7 @@ class Camera(object):
 
 
 @window.event
-def on_mouse_release(x, y, buttons, modifiers):
+def on_mouse_press(x, y, buttons, modifiers):
     if buttons & mouse.LEFT:
         click, dir = camera.project_ray(x, y)
         #cross = Ray(click, dir, 20)
@@ -313,61 +313,6 @@ class Grid(object):
     def delete(self):
         self.vertex_list.delete()
 
-
-class Torus(object):
-    list = None
-    def __init__(self, radius, inner_radius, slices, inner_slices, 
-                 batch, group=None):
-        # Create the vertex and normal arrays.
-        vertices = []
-        normals = []
-
-        u_step = 2 * pi / (slices - 1)
-        v_step = 2 * pi / (inner_slices - 1)
-        u = 0.
-        for i in range(slices):
-            cos_u = cos(u)
-            sin_u = sin(u)
-            v = 0.
-            for j in range(inner_slices):
-                cos_v = cos(v)
-                sin_v = sin(v)
-
-                d = (radius + inner_radius * cos_v)
-                x = d * cos_u
-                y = d * sin_u
-                z = inner_radius * sin_v
-
-                nx = cos_u * cos_v
-                ny = sin_u * cos_v
-                nz = sin_v
-
-                vertices.extend([x, y, z])
-                normals.extend([nx, ny, nz])
-                v += v_step
-            u += u_step
-
-        # Create a list of triangle indices.
-        indices = []
-        for i in range(slices - 1):
-            for j in range(inner_slices - 1):
-                p = i * inner_slices + j
-                indices.extend([p, p + inner_slices, p + inner_slices + 1])
-                indices.extend([p, p + inner_slices + 1, p + 1])
-
-        self.vertex_list = batch.add_indexed(len(vertices)//3, 
-                                             GL_TRIANGLES,
-                                             group,
-                                             indices,
-                                             ('v3f/static', vertices),
-                                             ('n3f/static', normals))
-       
-    def delete(self):
-        self.vertex_list.delete()
-
-
-
-
 class Particles(object):
     
     def intersect(self, pt, dir):
@@ -375,9 +320,9 @@ class Particles(object):
             p = Point3(loc[0], loc[1], loc[2])
             v = (p - camera.location()).normalize()
             if v.dot(dir) > 0.999:
-                self.vels[i][0] += random()-0.5
-                self.vels[i][1] += 4 + random()
-                self.vels[i][2] += random()-0.5
+                self.vels[i][0] += 3*(random()-0.5)
+                self.vels[i][1] += 4 + 3*random()
+                self.vels[i][2] += 3*(random()-0.5)
                 
         self.flush()
     
@@ -402,12 +347,10 @@ class Particles(object):
             return (random()-0.5)*size
 
         self.locs = self.random_locations()
-        self.vels = [ [rvel(), rvel(), rvel()]       for i in range(num) ]
-
+        self.vels = [ [rvel(), rvel(), rvel()] for i in range(num) ]
         self.flush()
         
         colors = [random() for i in range(num*3)]
-
         self.vertex_list = batch.add(len(self.vertices)//3, 
                                              GL_POINTS,
                                              group,
@@ -422,7 +365,8 @@ def euler_particles(dt):
         v = particles.vels[i]
         
         # gravity
-        v[1] += -9.8*dt
+        if p[1] > 0.001:
+            v[1] += -9.8*dt
         
         # ground plane collision
         if p[1] < 0:
@@ -465,6 +409,5 @@ setup()
 
 grid = Grid(2, 6, batch, group=gridgroup )
 axes = Axes(0.5, batch, group=axesgroup )
-#torus = Torus(1, 0.3, 20, 10, group=geogroup, batch=batch)
-particles = Particles(500, 3, batch, group=partgroup)
+particles = Particles(1000, 3, batch, group=partgroup)
 pyglet.app.run()
