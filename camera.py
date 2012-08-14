@@ -45,11 +45,13 @@ class CameraHandler(object):
                     self.camera.theta = pi
                 elif self.camera.theta < 0.0001:
                     self.camera.theta = 0.0001
+                self.camera.update_location()
                 
             if buttons & mouse.RIGHT:
                 self.camera.radius += 0.01 * -dx
                 if self.camera.radius < 0:
                     self.camera.radius = 0
+                self.camera.update_location()
             
             if buttons & mouse.MIDDLE:
                 s = 0.01
@@ -58,6 +60,7 @@ class CameraHandler(object):
                 phi = self.camera.phi + pi*0.5
                 self.camera.center[0] += cos(phi) * s * dx
                 self.camera.center[2] += sin(phi) * s * dx
+                self.camera.update_location()
 
     def on_resize(self, width, height):
         self.camera.view_update(width, height)
@@ -77,21 +80,23 @@ class Camera(object):
         self.center = Vector3(0,0,0)
         self.up = Vector3(0,1,0)
 
+        self.loc = Vector3(0,0,0)
+        self.update_location()
+        
         self.needs_update = False
 
         self.window = window
         handlers = CameraHandler(window, self)
         window.push_handlers(handlers)
 
-    def location(self):
+    def update_location(self):
         eyeX = self.radius * cos(self.phi) * sin(self.theta) + self.center[0]
         eyeY = self.radius * cos(self.theta)                 + self.center[1]
         eyeZ = self.radius * sin(self.phi) * sin(self.theta) + self.center[2]
-        return Vector3(eyeX, eyeY, eyeZ)
+        self.loc = Vector3(eyeX, eyeY, eyeZ)
         
     def project_ray(self, px, py):
-        loc = self.location()
-        cam_view = (self.center - loc).normalize()
+        cam_view = (self.center - self.loc).normalize()
         
         self.cam_h =  cam_view.cross(self.up).normalize()
         self.cam_v = -1 * cam_view.cross(self.cam_h).normalize()
@@ -108,7 +113,7 @@ class Camera(object):
         self.cam_h *= half_h
         self.cam_v *= half_v
 
-        click = loc + (cam_view*self.clipnear)  + (nx * self.cam_h) + (ny * self.cam_v)
+        click = self.loc + (cam_view*self.clipnear)  + (nx * self.cam_h) + (ny * self.cam_v)
 
         '''
         modelview = (GLdouble * 16)()
@@ -123,7 +128,7 @@ class Camera(object):
         gluUnProject(px, py, self.clipnear, modelview, projection, view, wx, wy, wz)
         click = Vector3(wx.value, wy.value, wz.value)
         '''
-        dir = (click - loc).normalize()
+        dir = (click - self.loc).normalize()
         return click, dir
     
     def view_update(self, width, height):
