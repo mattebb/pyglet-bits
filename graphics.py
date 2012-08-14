@@ -1,5 +1,4 @@
 
-
 from random import random
 
 import euclid
@@ -15,10 +14,12 @@ from pyglet.window import mouse
 
 import camera
 
+import numpy as np
+
 try:
     # Try and create a window with multisampling (antialiasing)
     config = Config(sample_buffers=1, samples=4, depth_size=16, double_buffer=True,)
-    window = pyglet.window.Window(resizable=True, config=config)
+    window = pyglet.window.Window(400, 400, resizable=True, config=config)
 except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
@@ -42,14 +43,13 @@ def on_draw():
     
     glLoadIdentity()
 
-    cam_loc = camera.location()
-    gluLookAt(cam_loc[0], cam_loc[1], cam_loc[2],
+    gluLookAt(camera.loc[0], camera.loc[1], camera.loc[2],
                camera.center[0], camera.center[1], camera.center[2],
                camera.up[0], camera.up[1], camera.up[2]);
 
 
     batch.draw()
-
+    
 def setup():
     # One-time GL setup
     glClearColor(0.1, 0.1, 0.1, 1)
@@ -131,7 +131,8 @@ class Particles(object):
     def intersect(self, pt, dir):
         for i, loc in enumerate(self.locs):
             p = Point3(loc[0], loc[1], loc[2])
-            v = (p - camera.location()).normalize()
+            v = (p - camera.loc).normalize()
+            
             if v.dot(dir) > 0.999:
                 self.vels[i][0] += 3*(random()-0.5)
                 self.vels[i][1] += 4 + 3*random()
@@ -150,20 +151,34 @@ class Particles(object):
         else:
             self.vertices = [item for sublist in self.locs for item in sublist]
     
+    def flushn(self):
+        
+        #a = np.reshape(self.locs, -1).tolist()
+        a = list(self.locs.flat)
+        
+        if hasattr(self, "vertex_list"):
+            self.vertex_list.vertices = a
+        else:
+            self.vertices = a
+    
     def __init__(self, num, size, batch, group=None):
-        
-        
         self.num = num
         self.size = size
         
         def rvel():
             return (random()-0.5)*size
 
-        self.locs = self.random_locations()
-        self.vels = [ [rvel(), rvel(), rvel()] for i in range(num) ]
-        self.flush()
+        self.locs = (np.random.rand(num, 3)-0.5)*size
+        self.locs += np.array([0,size,0])
+        self.vels = (np.random.rand(num, 3)-0.5)
+        self.flushn()
         
-        colors = [random() for i in range(num*3)]
+        #self.locs = self.random_locations()
+        #self.vels = [ [rvel(), rvel(), rvel()] for i in range(num) ]
+        #self.flush()
+        
+        #colors = [random() for i in range(num*3)]
+        colors = [0.5]*(num*3)
         self.vertex_list = batch.add(len(self.vertices)//3, 
                                              GL_POINTS,
                                              group,
@@ -171,6 +186,23 @@ class Particles(object):
                                              ('c3f/static', colors))
     def delete(self):
         self.vertex_list.delete()
+
+def euler_particlesn(dt):
+    v = particles.vels
+    l = particles.locs
+    
+    # gravity
+    v += np.array([0, -9.8*dt, 0])
+    
+    # ground plane collision
+    damp = 0.4
+    v = np.where(l[1]<0, (v*np.array([1,-1,1])*damp), v)
+    l = np.where(l[1]<0, l*np.array([1,0,1]), l)
+
+    # euler
+    l += v*dt
+    
+    particles.flushn()
 
 def euler_particles(dt):
 
@@ -198,8 +230,7 @@ def euler_particles(dt):
     particles.flush()
 
 
-pyglet.clock.schedule(euler_particles)
-
+pyglet.clock.schedule(euler_particlesn)
 
 geogroup = GeometryGroup()
 gridgroup = GridGroup()
@@ -213,13 +244,26 @@ setup()
 
 
 ui = ui2d.Ui(window)
-ui.addControl()
+#ui.addControl()
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
 window.push_handlers(on_draw)
 
+
+
+
 grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
-particles = Particles(10, 3, batch, group=partgroup)
+particles = Particles(10000, 3, batch, group=partgroup)
+
 pyglet.app.run()
+
+'''
+import cProfile
+cProfile.run('pyglet.app.run()', '/tmp/pyprof')
+import pstats
+stats = pstats.Stats('/tmp/pyprof')
+stats.sort_stats('time')
+stats.print_stats()
+'''
