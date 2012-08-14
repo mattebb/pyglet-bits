@@ -19,7 +19,7 @@ import numpy as np
 try:
     # Try and create a window with multisampling (antialiasing)
     config = Config(sample_buffers=1, samples=4, depth_size=16, double_buffer=True,)
-    window = pyglet.window.Window(400, 400, resizable=True, config=config)
+    window = pyglet.window.Window(1280, 720, resizable=True, config=config)
 except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
@@ -28,6 +28,7 @@ except pyglet.window.NoSuchConfigException:
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
+    return
     if buttons & mouse.LEFT:
         click, dir = camera.project_ray(x, y)
         #cross = Ray(click, dir, 20)
@@ -140,21 +141,8 @@ class Particles(object):
                 
         self.flush()
     
-    def random_locations(self):
-        def rloc():
-            return (random()-0.5)*self.size
-        return [ [rloc(), rloc()+self.size, rloc()]  for i in range(self.num) ]
-    
     def flush(self):
-        if hasattr(self, "vertex_list"):
-            self.vertex_list.vertices = [item for sublist in self.locs for item in sublist]
-        else:
-            self.vertices = [item for sublist in self.locs for item in sublist]
-    
-    def flushn(self):
-        
-        #a = np.reshape(self.locs, -1).tolist()
-        a = list(self.locs.flat)
+        a = tuple(self.locs.flat)
         
         if hasattr(self, "vertex_list"):
             self.vertex_list.vertices = a
@@ -164,18 +152,12 @@ class Particles(object):
     def __init__(self, num, size, batch, group=None):
         self.num = num
         self.size = size
-        
-        def rvel():
-            return (random()-0.5)*size
+
 
         self.locs = (np.random.rand(num, 3)-0.5)*size
         self.locs += np.array([0,size,0])
         self.vels = (np.random.rand(num, 3)-0.5)
-        self.flushn()
-        
-        #self.locs = self.random_locations()
-        #self.vels = [ [rvel(), rvel(), rvel()] for i in range(num) ]
-        #self.flush()
+        self.flush()
         
         #colors = [random() for i in range(num*3)]
         colors = [0.5]*(num*3)
@@ -187,50 +169,27 @@ class Particles(object):
     def delete(self):
         self.vertex_list.delete()
 
-def euler_particlesn(dt):
-    v = particles.vels
-    l = particles.locs
+def euler_particles(dt):
+    vels = particles.vels
+    locs = particles.locs
     
     # gravity
-    v += np.array([0, -9.8*dt, 0])
+    vels += np.array([0, -9.8*dt, 0])
     
     # ground plane collision
     damp = 0.4
-    v = np.where(l[1]<0, (v*np.array([1,-1,1])*damp), v)
-    l = np.where(l[1]<0, l*np.array([1,0,1]), l)
+    y_lt_zero = locs[:,1] < 0
 
-    # euler
-    l += v*dt
-    
-    particles.flushn()
+    vels[y_lt_zero] *= np.array([damp,-damp,damp])
+    locs[y_lt_zero] *= np.array([1,0,1])
 
-def euler_particles(dt):
-
-    for i, p in enumerate(particles.locs):
-        v = particles.vels[i]
-        
-        # gravity
-        if p[1] > 0.001:
-            v[1] += -9.8*dt
-        
-        # ground plane collision
-        if p[1] < 0:
-            damp = 0.4
-            v[0] = v[0]*damp
-            v[1] = -v[1]*damp
-            v[2] = v[2]*damp
-            
-            p[1] = 0
-
-        # euler 
-        p[0] = p[0] + v[0]*dt
-        p[1] = p[1] + v[1]*dt
-        p[2] = p[2] + v[2]*dt
+    # euler 
+    locs += vels*dt
     
     particles.flush()
 
 
-pyglet.clock.schedule(euler_particlesn)
+pyglet.clock.schedule(euler_particles)
 
 geogroup = GeometryGroup()
 gridgroup = GridGroup()
@@ -255,11 +214,11 @@ window.push_handlers(on_draw)
 
 grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
-particles = Particles(10000, 3, batch, group=partgroup)
+particles = Particles(50000, 3, batch, group=partgroup)
 
 pyglet.app.run()
-
 '''
+
 import cProfile
 cProfile.run('pyglet.app.run()', '/tmp/pyprof')
 import pstats
