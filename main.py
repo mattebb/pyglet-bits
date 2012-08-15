@@ -1,4 +1,3 @@
-
 from random import random
 
 import euclid
@@ -15,16 +14,16 @@ from pyglet.window import mouse
 import camera
 
 import numpy as np
-
+'''
 try:
     # Try and create a window with multisampling (antialiasing)
     config = Config(sample_buffers=1, samples=4, depth_size=16, double_buffer=True,)
-    window = pyglet.window.Window(1280, 720, resizable=True, config=config)
+    window = pyglet.window.Window(720, 360, resizable=True, config=config)
 except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
-
-
+'''
+window = pyglet.window.Window(resizable=True)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
@@ -153,6 +152,7 @@ class Particles(object):
         self.num = num
         self.size = size
 
+        self.force = False
 
         self.locs = (np.random.rand(num, 3)-0.5)*size
         self.locs += np.array([0,size,0])
@@ -183,6 +183,10 @@ def euler_particles(dt):
     vels[y_lt_zero] *= np.array([damp,-damp,damp])
     locs[y_lt_zero] *= np.array([1,0,1])
 
+    # force test
+    if particles.force == True:
+        vels += np.array([5*dt, 0, 0])
+
     # euler 
     locs += vels*dt
     
@@ -203,7 +207,13 @@ setup()
 
 
 ui = ui2d.Ui(window)
-#ui.addControl()
+
+grid = ui3d.Grid(2, 6, batch, group=gridgroup )
+axes = ui3d.Axes(0.5, batch, group=axesgroup )
+particles = Particles(5, 3, batch, group=partgroup)
+
+ui.addControl(particles, "force", ui2d.UiControls.TOGGLE)
+ui.addControl(camera, "fov", ui2d.UiControls.SLIDER)
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
@@ -212,9 +222,7 @@ window.push_handlers(on_draw)
 
 
 
-grid = ui3d.Grid(2, 6, batch, group=gridgroup )
-axes = ui3d.Axes(0.5, batch, group=axesgroup )
-particles = Particles(50000, 3, batch, group=partgroup)
+
 
 pyglet.app.run()
 '''
