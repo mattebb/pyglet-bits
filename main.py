@@ -205,15 +205,13 @@ camera = camera.Camera(window)
 
 setup()
 
-
-ui = ui2d.Ui(window)
-
 grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
-particles = Particles(5, 3, batch, group=partgroup)
+particles = Particles(5000, 3, batch, group=partgroup)
 
+ui = ui2d.Ui(window)
 ui.addControl(particles, "force", ui2d.UiControls.TOGGLE)
-ui.addControl(camera, "fov", ui2d.UiControls.SLIDER)
+ui.addControl(camera, "fov", ui2d.UiControls.SLIDER, vmin=5, vmax=120)
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack

@@ -43,27 +43,20 @@ class UiEventHandler(object):
         self.ui.batch.draw()
 
     def on_mouse_press(self, x, y, buttons, modifiers):
-        if buttons & pyglet.window.mouse.LEFT:
-            for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
-                control.press(x, y)
+        for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
+            control.press(buttons, x, y)
 
     def on_mouse_release(self, x, y, buttons, modifiers):
-        if buttons & pyglet.window.mouse.LEFT:
-
-            for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
-                control.release(x, y)
-            
-            for control in [c for c in self.ui.controls if c.active]:
-                control.deactivate()
+        for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
+            control.release(buttons, x, y)
+        
+        for control in [c for c in self.ui.controls if c.active]:
+            control.deactivate()
             
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        if buttons & pyglet.window.mouse.LEFT:
-            for control in [c for c in self.ui.controls if c.active]:
-                control.drag(x, y, dx, dy)
-                
-            #for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
-            #    control.drag(x, y, dx, dy)
+        for control in [c for c in self.ui.controls if c.active]:
+            control.drag(buttons, x, y, dx, dy)
 
 class Ui(object):
     
@@ -76,17 +69,17 @@ class Ui(object):
         ui_handlers = UiEventHandler(window, self)
         window.push_handlers(ui_handlers)
 
-    def addControl(self, object, attr, type=UiControls.BUTTON):
+    def addControl(self, object, attr, type=UiControls.BUTTON, **kwargs):
         if type == UiControls.SLIDER:
-            self.controls.append( SliderControl( object, attr, 10, 40, 80, 20, self ) )
+            self.controls.append( SliderControl( object, attr, 10, 40, 80, 20, self, **kwargs ) )
             
         elif type == UiControls.TOGGLE:
-            self.controls.append( ToggleControl( object, attr, 10, 10, 80, 20, self ) )
+            self.controls.append( ToggleControl( object, attr, 10, 10, 80, 20, self, **kwargs ) )
         
     
 
 class UiControl(object):
-    def __init__(self, object, attr, x, y, w, h, ui, type=UiControls.BUTTON):
+    def __init__(self, object, attr, x, y, w, h, ui, type=UiControls.BUTTON, vmin=0, vmax=100):
         self.x = x
         self.y = y
         self.w = w
@@ -96,11 +89,17 @@ class UiControl(object):
         self.active = False
         
         self.object = object
-        self.attr = attr
-        
-        self.ui = ui
-        
+
+        if hasattr(object, attr):
+            self.attr = attr
+        else:
+            raise ValueError
+
         self.title = attr.capitalize()
+        self.min = vmin
+        self.max = vmax
+
+        self.ui = ui
         
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
@@ -162,6 +161,12 @@ class UiControl(object):
     def drag(self, x, y, dx, dy):
         pass
     
+    def getval(self):
+        return getattr(self.object, self.attr)
+
+    def setval(self, newval):
+        setattr(self.object, self.attr, min(self.max, max(self.min, newval )) )
+
     def activate(self):
         self.active = True
         self.update_draw()
@@ -180,12 +185,14 @@ class UiControl(object):
 
 class ToggleControl(UiControl):
     
-    def press(self, x, y):
-        self.activate()
-        self.toggle()
+    def press(self, buttons, x, y):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.activate()
+            self.toggle()
     
-    def release(self, x, y):
-        self.deactivate()
+    def release(self, buttons, x, y):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.deactivate()
     
     def update_draw(self):
         val = getattr(self.object, self.attr)
@@ -220,20 +227,23 @@ class ToggleControl(UiControl):
 
 class SliderControl(UiControl):
     
-    def press(self, x, y):
-        self.activate()
+    def press(self, buttons, x, y):
+        if buttons & pyglet.window.mouse.LEFT or \
+           buttons & pyglet.window.mouse.MIDDLE:
+            self.activate()
     
-    def release(self, x, y):
-        self.deactivate()
+    def release(self, buttons, x, y):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.deactivate()
 
     
-    def drag(self, x, y, dx, dy):
-        if not self.check_attr(): return
+    def drag(self, buttons, x, y, dx, dy):
+        if buttons & pyglet.window.mouse.MIDDLE:
+            if not self.check_attr(): return
 
-        val = getattr(self.object, self.attr)
-        setattr(self.object, self.attr, val + dx)
-
-        self.update_draw()
+            self.setval( self.getval() + dx )
+            
+            self.update_draw()
     
     def update_draw(self):
         val = getattr(self.object, self.attr)
