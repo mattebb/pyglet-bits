@@ -164,9 +164,11 @@ class UiControl(object):
     
     def activate(self):
         self.active = True
+        self.update_draw()
         
     def deactivate(self):
         self.active = False
+        self.update_draw()
     
     def check_attr(self):
         if hasattr(self.object, self.attr):
@@ -223,10 +225,28 @@ class SliderControl(UiControl):
     
     def release(self, x, y):
         self.deactivate()
+
     
     def drag(self, x, y, dx, dy):
         if not self.check_attr(): return
 
         val = getattr(self.object, self.attr)
         setattr(self.object, self.attr, val + dx)
+
+        self.update_draw()
+    
+    def update_draw(self):
+        val = getattr(self.object, self.attr)
         
+        self.vertices = self.buttonBase()
+        
+        if self.active:
+            self.colors = [1.0,1.0,0.0]*(len(self.vertices)//2)
+        else: 
+            self.colors = [0.5,0.0,0.5]*(len(self.vertices)//2)
+        
+        self.label.begin_update()
+        self.label.text = self.title + " %.1f" % val
+        self.label.end_update()
+        
+        self.flush_draw()
