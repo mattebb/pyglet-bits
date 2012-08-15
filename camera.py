@@ -35,6 +35,7 @@ class CameraHandler(object):
             
                 winsize = self.window.get_size()
                 self.camera.view_update(winsize[0], winsize[1])
+                return pyglet.event.EVENT_HANDLED
 
         elif keys[key.SPACE]:
             if buttons & mouse.LEFT:
@@ -61,6 +62,8 @@ class CameraHandler(object):
                 self.camera.center[0] += cos(phi) * s * dx
                 self.camera.center[2] += sin(phi) * s * dx
                 self.camera.update_location()
+            
+            return pyglet.event.EVENT_HANDLED
 
     def on_resize(self, width, height):
         self.camera.view_update(width, height)
