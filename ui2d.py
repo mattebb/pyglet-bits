@@ -1,5 +1,6 @@
 import pyglet
 from pyglet.gl import *
+from ui2ddraw import *
 
 class uiGroup(pyglet.graphics.Group):
     def __init__(self, window):
@@ -71,10 +72,10 @@ class Ui(object):
 
     def addControl(self, object, attr, type=UiControls.BUTTON, **kwargs):
         if type == UiControls.SLIDER:
-            self.controls.append( SliderControl( object, attr, 10, 40, 80, 20, self, **kwargs ) )
+            self.controls.append( SliderControl( object, attr, 10, 80, 120, 20, self, **kwargs ) )
             
         elif type == UiControls.TOGGLE:
-            self.controls.append( ToggleControl( object, attr, 10, 10, 80, 20, self, **kwargs ) )
+            self.controls.append( ToggleControl( object, attr, 10, 10, 120, 20, self, **kwargs ) )
         
     
 
@@ -101,6 +102,8 @@ class UiControl(object):
 
         self.ui = ui
         
+        #self.geo = self.buttonBase()
+        self.geo = roundbase2(self.x, self.y, self.w, self.h)
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
                         group=ui.group,
@@ -118,29 +121,32 @@ class UiControl(object):
 
     def update_draw(self):
         
-        self.vertices = self.buttonBase()
-        self.colors = [1.0,0.0,1.0]*(len(self.vertices)//2)
-        
+        self.vertices = self.geo['vertices']
+        self.colors = self.geo['colors']
         self.flush_draw()
     
     def flush_draw(self, vertices=True, colors=True):
+        len_verts = len(self.geo['vertices'])
+
         if hasattr(self, "vertex_list"):
-            
+            len_vlist = self.vertex_list.get_size()
+
             # resize vertex list if updating to new shape
-            if len(self.vertices)//2 != self.vertex_list.get_size():
-                self.vertex_list.resize( len(self.vertices)//2 )
+            if len_verts//2 != len_vlist:
+                self.vertex_list.resize( len_verts//2 )
             
             if vertices:
-                self.vertex_list.vertices = self.vertices
+                self.vertex_list.vertices = self.geo['vertices']
             if colors:
-                self.vertex_list.colors = self.colors
+                self.vertex_list.colors = self.geo['colors']
         
         else:
-            self.vertex_list = self.ui.batch.add(len(self.vertices)//2, 
-                                             GL_QUADS,
+            self.vertex_list = self.ui.batch.add(len_verts//2, 
+                                             self.geo['mode'],
                                              self.ui.group,
-                                             ('v2f/static', self.vertices),
-                                             ('c3f/static', self.colors))
+                                             ('v2f/static', self.geo['vertices']),
+                                             ('c3f/static', self.geo['colors'])
+                                             )
             
 
     def point_inside(self, x, y):
@@ -154,11 +160,11 @@ class UiControl(object):
         self.vertex_list.delete()
     
     # override in subclasses
-    def press(self, x, y):
+    def press(self, buttons, x, y):
         pass
-    def release(self, x, y):
+    def release(self, buttons, x, y):
         pass
-    def drag(self, x, y, dx, dy):
+    def drag(self, buttons, x, y, dx, dy):
         pass
     
     def getval(self):
@@ -197,32 +203,25 @@ class ToggleControl(UiControl):
     def update_draw(self):
         val = getattr(self.object, self.attr)
         
-        checkmark = [self.x-3, self.y + self.h/3.0, \
-                    self.x-3, self.y + 2*self.h/3.0, \
-                    self.x, self.y + 2*self.h/3.0, \
-                    self.x, self.y + self.h/3.0 ]
+        #checkmark = [self.x-3, self.y + self.h/3.0, \
+        #            self.x-3, self.y + 2*self.h/3.0, \
+        #            self.x, self.y + 2*self.h/3.0, \
+        #            self.x, self.y + self.h/3.0 ]
         
+        #self.vertices = self.geo['vertices']
+        #self.colors = self.geo['colors']
+
         self.label.begin_update()
-        
         if (val):
-            self.vertices = self.buttonBase() + checkmark
-            self.colors = [1.0,0.0,1.0]*(len(self.vertices)//2)
             self.label.text = self.title + ' on'
         else:
-            self.vertices = self.buttonBase()
-            self.colors = [0.5,0.0,0.5]*(len(self.vertices)//2)
             self.label.text = self.title + ' off'
-        
         self.label.end_update()
         
         self.flush_draw()
     
     def toggle(self):
-        if not self.check_attr(): return
-        
-        val = getattr(self.object, self.attr)
-        setattr(self.object, self.attr, not val)
-        
+        self.setval( not self.getval() )
         self.update_draw()
 
 class SliderControl(UiControl):
@@ -239,21 +238,19 @@ class SliderControl(UiControl):
     
     def drag(self, buttons, x, y, dx, dy):
         if buttons & pyglet.window.mouse.MIDDLE:
-            if not self.check_attr(): return
-
             self.setval( self.getval() + dx )
-            
             self.update_draw()
     
     def update_draw(self):
         val = getattr(self.object, self.attr)
         
-        self.vertices = self.buttonBase()
+        #self.vertices = self.geo['vertices']
+        #self.colors = self.geo['colors']
         
-        if self.active:
-            self.colors = [1.0,1.0,0.0]*(len(self.vertices)//2)
-        else: 
-            self.colors = [0.5,0.0,0.5]*(len(self.vertices)//2)
+        #if self.active:
+        #    self.colors = [.6,.6,.6]*(len(self.geo['vertices'])//2)
+        #else: 
+        #    self.colors = [0.3,0.3,0.3]*(len(self.geo['vertices'])//2)
         
         self.label.begin_update()
         self.label.text = self.title + " %.1f" % val
