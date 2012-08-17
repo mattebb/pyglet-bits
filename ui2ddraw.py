@@ -53,46 +53,53 @@ def roundbase2(x, y, w, h):
     interleaved += np.array([x,y])
     
     geo = quad_strip_fix(interleaved.flat, 2)
-    
-    #geo = [x,y, x+w,y, x,y+h, x+w,y+h ]
-
     colors = colors = [0.7]*3*(len(geo)//2)
+    
+    return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
+    
+def fit(v, mi, mx):
+    return (v  * (mx-mi)) + mi
 
+#def fitc(v, mi, mx):
+    
+
+def roundbase(x, y, w, h, col1, col2):
+    geo = []
+    colors = []
+    r = h/3.0         # radius
+    rsteps = 3      # radial divisions
+    ch = h - 2*r    # central area height
+    
+    # draw rounded box, horizontal quads, bottom to top
+    for i in range(-rsteps,rsteps+1):
+        theta = pi/2.0 * i/(float(rsteps))
+        
+        if i == 0:
+            # central rect
+            geo += [x, r+y,      r+x+w, r+y]
+            geo += [x, r+y+ch,   r+x+w, r+y+ch]
+        else:
+            # rounded edges
+            x2 = cos(theta)*r
+            y0 = sin(theta)*r + r
+            x1 = r - x2
+            if i > 0:
+                y0 += ch
+            geo += [x1+x, y0+y,  x2+x+w, y0+y]
+
+    geo = quad_strip_fix(geo, 2)
+    
+    # generate uv v coord from vertex y height
+    geoarr = np.array(geo).reshape(-1,2)
+    v = (geoarr[:,1] - y) / h          # v value based on vertex y height
+    
+    colors = np.repeat(v, 3).reshape(-1,3)
+    colors = fit(colors, np.array(col1), np.array(col2))
+    colors = list(colors.flat)
+    
     return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
     
     
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)
-    roundbase2(10, 10, 50, 20)
-
-def roundbase(x, y, w, h):
-    geo = []
-    colors = []
-    r = 6           # radius
-    rsteps = 2      # radial divisions
-    ch = h - 2*r    # central area height
-    
-    # draw rounded box, horizontal quads, bottom to top
-    
-    # bottom rounded region
-    for i in range(rsteps):
-        theta = pi/2.0 * i/(float(rsteps))
-        theta2 = pi/2.0 * (i+1)/(float(rsteps))
-        
-        yr = cos(theta)*r
-        xr = sin(theta)*r
-        yr2 = cos(theta2)*r
-        xr2 = sin(theta2)*r
-        
-        # bottom left, bottom right
-        geo += [x+r-xr, y+r-yr,     x+w-r+xr, y+r-yr]
-        # top right, bottom left
-        geo += [x+w-r+xr2, y+r-yr2,   x+r-xr2, y+r-yr2]
-    
-    # middle quad
-    geo += [x, y+r,         x+w, y+r]   # bl, br
-    geo += [x+w, y+h-r,     x, y+h-r]  # tr, tl
-    
-    colors = [0.4]*(len(geo)/2)
-    
-    return {'vertices':geo, 'colors':colors}
+    roundbase(10, 10, 80, 20)
