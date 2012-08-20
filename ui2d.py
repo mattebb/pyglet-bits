@@ -19,7 +19,7 @@ class uiGroup(pyglet.graphics.Group):
         
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        glTranslatef(0.375, 0.375, 0.0)
+        #glTranslatef(0.375, 0.375, 0.0)
 
         glDisable(GL_DEPTH_TEST);
 
@@ -35,6 +35,11 @@ class UiControls(object):
     
     INACTIVE = 0
     ACTIVE = 1
+    
+    font_style = {'color': (0, 0, 0, 255),
+             'font_size': 8,
+             'font_name': 'Bitstream Vera Sans', 
+             }
 
 class UiEventHandler(object):
     def __init__(self, window, ui):
@@ -48,20 +53,20 @@ class UiEventHandler(object):
         for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
             control.press(x, y, buttons, modifiers)
         
-        for control in [c for c in self.ui.controls if c.textediting \
-                                                and not c.point_inside(x, y)]:
-            control.textedit_end()
+        #for control in [c for c in self.ui.controls if c.textediting \
+        #                                        and not c.point_inside(x, y)]:
+        #    control.textedit_end()
 
     def on_mouse_release(self, x, y, buttons, modifiers):
         for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
             control.release(x, y, buttons, modifiers)
         
-        #for control in [c for c in self.ui.controls if c.active]:
-        #    control.deactivate()
-            
+        for control in [c for c in self.ui.controls if c.active 
+                                                    and not c.point_inside(x, y)]:
+            control.release_outside(x, y, buttons, modifiers)
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        for control in [c for c in self.ui.controls if c.active]:
+        for control in [c for c in self.ui.controls if c.point_inside(x, y) or c.active]:
             control.drag(x, y, dx, dy, buttons, modifiers)
     
     def on_text(self, text):
@@ -69,9 +74,13 @@ class UiEventHandler(object):
             control.textedit_update(text)
     
     def on_key_press(self, symbol, modifiers):
-        if symbol in (key.ENTER, key.RETURN, key.NUM_ENTER, key.ESCAPE):
+        if symbol in (key.ENTER, key.RETURN, key.NUM_ENTER):
             for control in [c for c in self.ui.controls if c.textediting]:
-                control.textedit_end()
+                control.textedit_confirm()
+            return pyglet.event.EVENT_HANDLED
+        elif symbol == key.ESCAPE:
+            for control in [c for c in self.ui.controls if c.textediting]:
+                control.textedit_cancel()
             return pyglet.event.EVENT_HANDLED
 
 class Ui(object):
@@ -105,60 +114,33 @@ class UiControl(object):
         
         self.active = False
         self.textediting = False
-        self.textedit_buffer = ''
-        
+
         self.object = object
         if hasattr(object, attr):
             self.attr = attr
         else:
             raise ValueError("Invalid attribute provided: %s" % attr)
 
-        self.title = attr.capitalize()
         self.min = vmin
         self.max = vmax
 
         self.ui = ui
-        self.geo = roundbase(self.x, self.y, self.w, self.h, [0.5,0.5,0.5], [0.6,0.6,0.6])
+        self.geo = roundbase(self.x, self.y, self.w, self.h, [0.5]*3, [0.6]*3)
 
+        self.title = attr.capitalize()
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
                         group=ui.group,
-                        font_size=9,
-                        color = [0,0,0,255],
-                        x=x+4, y=y+4)
+                        x=x+8, y=y+4,
+                        **UiControls.font_style)
+        self.label.anchor_y = 'baseline'
+        self.label.height = h
         
-        self.valuelabel = pyglet.text.Label('')
-        self.document = pyglet.text.document.UnformattedDocument('testdocument')
-        #self.document.set_style(0, len(self.document.text), 
-        #    dict(color=(0, 0, 0, 255))
-        #)
-        #font = self.document.get_font()
-        #height = font.ascent - font.descent
-
-        self.layout = pyglet.text.layout.IncrementalTextLayout(
-                        self.document, w, h, multiline=False,
-                        batch=ui.batch)
-        self.caret = pyglet.text.caret.Caret(self.layout)
-
-        self.layout.x = x + 500
-        self.layout.y = y + 500
-        
-        '''
-        self.valuelabel = pyglet.text.Label( '' ,
-                        batch=ui.batch,
-                        group=ui.group,
-                        font_size=9,
-                        color = [0,0,0,255],
-                        x=x+46, y=y+4)
-        '''
         self.update_draw()
 
-    def update_draw(self):
-        self.vertices = self.geo['vertices']
-        self.colors = self.geo['colors']
-        self.flush_draw()
-    
     def flush_draw(self, vertices=True, colors=True):
+        
+        #for shape in geo:
         if self.geo != None:
             len_verts = len(self.geo['vertices'])
 
@@ -182,6 +164,19 @@ class UiControl(object):
                                              ('c3f/static', self.geo['colors'])
                                              )
 
+    def flush_draw2(self):
+        for shape in shapes:
+            if 'vertex_list' not in shape.keys():
+                shape['vertex_list'] = self.ui.batch.add( shape['len'], 
+                                             shape['mode'],
+                                             self.ui.group,
+                                             ('v2f/static', shape['vertices']),
+                                             ('c3f/static', shape['colors'])
+                                             )
+            elif shape['len'] != shape.vertex_list.get_size():
+                shape['vertex_list'].vertices = shape.vertices
+                shape['vertex_list'].colors = shape.colors
+
     def point_inside(self, x, y):
         if x < self.x:          return False
         if x > self.x+self.w:   return False
@@ -193,57 +188,29 @@ class UiControl(object):
         self.vertex_list.delete()
     
     # override in subclasses
-    def press(self, buttons, x, y):
+    def update_draw(self):
+        self.flush_draw()
+    
+    def press(self, *args, **kwargs):
         pass
-    def release(self, buttons, x, y):
+    def release(self, *args, **kwargs):
         pass
-    def drag(self, buttons, x, y, dx, dy):
+    def drag(self, *args, **kwargs):
         pass
+    def release_outside(self, x, y, buttons, modifiers):
+        self.deactivate()
     
     def getval(self):
         return getattr(self.object, self.attr)
-
     def setval(self, newval):
         setattr(self.object, self.attr, min(self.max, max(self.min, newval )) )
-
-    def setval_text(self):
-        val = float(self.textedit_buffer)
-        setattr(self.object, self.attr, min(self.max, max(self.min, val )) )
-
-    def textedit_begin(self):
-        self.textediting = True
-        self.caret.visible = True
-        self.caret.mark = 0
-        self.caret.position = len(self.document.text)
-        
-        self.update_draw()
-
-    def textedit_update(self, text):
-        
-        self.caret.on_text(text)
-        
-        
-        #self.textedit_buffer += text
-        
-        #if self.textediting:
-        #    self.setval_text()
-        self.update_draw()
-        
-    def textedit_end(self):
-        self.textediting = False
-        self.caret.visible = False
-        self.caret.mark = self.caret.position = 0
-        #self.textedit_buffer = ''
-        self.update_draw()
 
     def activate(self):
         self.active = True
         self.update_draw()
-        
     def deactivate(self):
         self.active = False
         self.update_draw()
-    
     
     def check_attr(self):
         if hasattr(self.object, self.attr):
@@ -253,8 +220,76 @@ class UiControl(object):
             return False
         
 
-class ToggleControl(UiControl):
+class UiTextEditControl(UiControl):
+    def __init__(self, object, attr, x, y, w, h, ui, type=UiControls.BUTTON, vmin=0, vmax=100):
+        super(UiTextEditControl, self).__init__( object, attr, x, y, w, h, ui, type, vmin, vmax )
+
+        self.document = pyglet.text.document.UnformattedDocument( str(self.getval()) )
+        self.document.set_style(0, len(self.document.text), UiControls.font_style)
+
+        self.layout = pyglet.text.layout.IncrementalTextLayout(
+                        self.document, w, h, multiline=False,
+                        batch=ui.batch,
+                        group=ui.group,
+                        )
+        self.caret = pyglet.text.caret.Caret(self.layout)
+        self.caret.visible = False
+        
+        self.layout.anchor_y = 'baseline'
+        self.layout.x = x + 48
+        self.layout.y = y + 4
+        
+        self.text_from_val()
+        
+        self.update_draw()
     
+    def val_from_text(self):
+        try:
+            val = float(self.document.text)
+            setattr(self.object, self.attr, min(self.max, max(self.min, val )) )
+        except:
+            pass
+
+    def text_from_val(self):
+        self.document.text = " %.1f" % self.getval()
+
+    def textedit_begin(self):
+        self.activate()
+
+        self.textediting = True
+        self.caret.visible = True
+        self.caret.mark = 0
+        self.caret.position = len(self.document.text)
+        self.update_draw()
+
+    def textedit_update(self, text):
+        self.caret.on_text(text)
+        self.update_draw()
+        
+    def textedit_end(self):
+        self.deactivate()
+        self.textediting = False
+        self.caret.visible = False
+        self.caret.mark = self.caret.position = 0
+        self.update_draw()
+    
+    def textedit_confirm(self):
+        if not self.textediting: return
+        self.val_from_text()
+        self.text_from_val()
+        self.textedit_end()
+    
+    def textedit_cancel(self):
+        if not self.textediting: return
+        self.text_from_val()
+        self.textedit_end()
+    
+    def release_outside(self, x, y, buttons, modifiers):
+        self.textedit_confirm()
+        super(UiTextEditControl, self).release_outside(x, y, buttons, modifiers)
+
+class ToggleControl(UiControl):
+        
     def press(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.activate()
@@ -264,66 +299,59 @@ class ToggleControl(UiControl):
         if buttons & pyglet.window.mouse.LEFT:
             self.deactivate()
     
-    def update_draw(self):
-        val = getattr(self.object, self.attr)
-        
-        if self.active:
-            col1 = [0.3,0.3,0.3]
-            col2 = [0.4,0.4,0.4]
-        else:
-            col1 = [0.5,0.5,0.5]
-            col2 = [0.6,0.6,0.6]
-        
-        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
-
-        self.label.begin_update()
-        self.valuelabel.text = "on" if self.getval() else "off"
-        self.label.end_update()
-        
-        
-        self.flush_draw()
-    
     def toggle(self):
         self.setval( not self.getval() )
+        
+        if self.getval():
+            col1 = [0.35]*3
+            col2 = [0.30]*3
+            coltext = [255]*4
+        else:
+            col1 = [0.5]*3
+            col2 = [0.6]*3
+            coltext = [0,0,0,255]
+            
+        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        self.label.color = coltext
+        
         self.update_draw()
 
-class SliderControl(UiControl):
+class SliderControl(UiTextEditControl):
+    
+    def activate(self):
+        col1 = [0.3,0.3,0.3]
+        col2 = [0.4,0.4,0.4]
+        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        super(SliderControl, self).activate()
+    
+    def deactivate(self):
+        col1 = [0.5,0.5,0.5]
+        col2 = [0.6,0.6,0.6]
+        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        super(SliderControl, self).deactivate()
     
     def press(self, x, y, buttons, modifiers):
         if self.textediting:
-            self.caret.on_mouse_press(x, y, button, modifiers)
+            self.caret.on_mouse_press(x, y, buttons, modifiers)
             return pyglet.event.EVENT_HANDLED
         
         if buttons & pyglet.window.mouse.LEFT:
             self.textedit_begin()
-            #self.activate()
+            
         elif buttons & pyglet.window.mouse.MIDDLE:
             self.activate()
     
     def release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.MIDDLE:
             self.deactivate()
-
     
     def drag(self, x, y, dx, dy, buttons, modifiers):
+        if buttons & pyglet.window.mouse.LEFT:
+            if self.textediting:
+                self.caret.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+                return pyglet.event.EVENT_HANDLED
+        
         if buttons & pyglet.window.mouse.MIDDLE:
             self.setval( self.getval() + dx )
+            self.text_from_val()
             self.update_draw()
-    
-    def update_draw(self):
-        if self.active or self.textediting:
-            col1 = [0.3,0.3,0.3]
-            col2 = [0.4,0.4,0.4]
-        else:
-            col1 = [0.5,0.5,0.5]
-            col2 = [0.6,0.6,0.6]
-        
-        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
-        
-        print(self.document.text)
-        
-        #self.valuelabel.begin_update()
-        #self.valuelabel.text = " %.1f" % self.getval()
-        #self.valuelabel.end_update()
-        
-        self.flush_draw()
