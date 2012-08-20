@@ -26,7 +26,7 @@ def roundbase2(x, y, w, h):
     geo = []
     colors = []
     r = 6         # radius
-    rsteps = 3      # radial divisions
+    rsteps = 4      # radial divisions
     ch = h - 2*r    # central area height
     
     ar_theta = np.arange(rsteps+1) / float(rsteps) * pi/2.0
@@ -66,8 +66,8 @@ def fit(v, mi, mx):
 def roundbase(x, y, w, h, col1, col2):
     geo = []
     colors = []
-    r = h/3.0         # radius
-    rsteps = 3      # radial divisions
+    r = h * 0.35         # radius
+    rsteps = 2      # radial divisions
     ch = h - 2*r    # central area height
     
     # draw rounded box, horizontal quads, bottom to top
@@ -90,8 +90,7 @@ def roundbase(x, y, w, h, col1, col2):
     geo = quad_strip_fix(geo, 2)
     
     # generate uv v coord from vertex y height
-    geoarr = np.array(geo).reshape(-1,2)
-    v = (geoarr[:,1] - y) / h          # v value based on vertex y height
+    v = [ (gy-y)/h for gy in geo[1::2] ]    # vertex y = slice to find odd list items
     
     colors = np.repeat(v, 3).reshape(-1,3)
     colors = fit(colors, np.array(col1), np.array(col2))
@@ -99,7 +98,22 @@ def roundbase(x, y, w, h, col1, col2):
     
     return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
     
+
+def roundoutline(x, y, w, h, col):
+    data = roundbase(x, y, w, h, [0]*3, [0]*3)
     
+    geo = data['vertices'][2:-2]
+    garray = np.array( geo ).reshape(-1,2)
+
+    # re-arrange quad strip vertex list into a loop
+    leftside = garray[::2]             # even vertices
+    rightside = garray[1::2][::-1]     # odd vertices, reversed
+    outline = list( np.append(leftside, rightside).reshape(-1,2).flat )
+
+    colors = [0.0]*3*(len(outline)//2)
+    
+    return {'mode':GL_LINE_LOOP, 'vertices':outline, 'colors':colors}
+
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)
-    roundbase(10, 10, 80, 20)
+    roundoutline(10, 10, 80, 20, [0.2]*3)
