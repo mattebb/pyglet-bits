@@ -3,10 +3,9 @@ from pyglet.gl import *
 from pyglet.window import key
 from ui2ddraw import *
 
-class uiGroup(pyglet.graphics.Group):
-    def __init__(self, window):
-        super(uiGroup, self).__init__()
-        
+class uiGroup(pyglet.graphics.OrderedGroup):
+    def __init__(self, order, window):
+        super(uiGroup, self).__init__(order)
         self.window = window
         
     def set_state(self):
@@ -89,7 +88,9 @@ class Ui(object):
         self.window = window
         self.controls = []
         self.batch = pyglet.graphics.Batch()
-        self.group = uiGroup(window)
+        self.control_group = uiGroup(0, window)
+        self.control_outline_group = uiGroup(5, window)
+        self.control_label_group = uiGroup(10, window)
         
         ui_handlers = UiEventHandler(window, self)
         window.push_handlers(ui_handlers)
@@ -126,11 +127,13 @@ class UiControl(object):
 
         self.ui = ui
         self.geo = roundbase(self.x, self.y, self.w, self.h, [0.5]*3, [0.6]*3)
-
+        self.shapes = []
+        self.vertex_lists = {}
+        
         self.title = attr.capitalize()
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
-                        group=ui.group,
+                        group=ui.control_label_group,
                         x=x+8, y=y+4,
                         **UiControls.font_style)
         self.label.anchor_y = 'baseline'
@@ -138,6 +141,7 @@ class UiControl(object):
         
         self.update_draw()
 
+    '''
     def flush_draw(self, vertices=True, colors=True):
         
         #for shape in geo:
@@ -163,19 +167,27 @@ class UiControl(object):
                                              ('v2f/static', self.geo['vertices']),
                                              ('c3f/static', self.geo['colors'])
                                              )
-
-    def flush_draw2(self):
-        for shape in shapes:
-            if 'vertex_list' not in shape.keys():
-                shape['vertex_list'] = self.ui.batch.add( shape['len'], 
-                                             shape['mode'],
-                                             self.ui.group,
-                                             ('v2f/static', shape['vertices']),
-                                             ('c3f/static', shape['colors'])
+    '''
+    def add_shape_geo(self, shapegeo):
+        
+        if shapegeo['id'] in self.vertex_lists.keys():
+            if self.vertex_lists['id'].get_size() != shapegeo['len']:
+                self.vertex_list.resize(shapegeo['len'])
+                
+            self.vertex_lists['id'].vertices = shapegeo['vertices']
+            self.vertex_lists['id'].colors = shapegeo['colors']
+            
+        else:
+            if 'outline' in shapegeo['id']:
+                group = self.ui.control_outline_group
+            else:
+                group = self.ui.control_group
+            self.vertex_lists['id'] = self.ui.batch.add( shapegeo['len'], 
+                                             shapegeo['mode'],
+                                             group,
+                                             ('v2f/static', shapegeo['vertices']),
+                                             ('c3f/static', shapegeo['colors'])
                                              )
-            elif shape['len'] != shape.vertex_list.get_size():
-                shape['vertex_list'].vertices = shape.vertices
-                shape['vertex_list'].colors = shape.colors
 
     def point_inside(self, x, y):
         if x < self.x:          return False
@@ -189,7 +201,8 @@ class UiControl(object):
     
     # override in subclasses
     def update_draw(self):
-        self.flush_draw()
+        #self.flush_draw()
+        pass
     
     def press(self, *args, **kwargs):
         pass
@@ -230,7 +243,7 @@ class UiTextEditControl(UiControl):
         self.layout = pyglet.text.layout.IncrementalTextLayout(
                         self.document, w, h, multiline=False,
                         batch=ui.batch,
-                        group=ui.group,
+                        group=ui.control_label_group,
                         )
         self.caret = pyglet.text.caret.Caret(self.layout)
         self.caret.visible = False
@@ -311,7 +324,9 @@ class ToggleControl(UiControl):
             col2 = [0.6]*3
             coltext = [0,0,0,255]
             
-        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        #self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        
+        self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, col1, col2) )
         self.label.color = coltext
         
         self.update_draw()
@@ -321,13 +336,17 @@ class SliderControl(UiTextEditControl):
     def activate(self):
         col1 = [0.3,0.3,0.3]
         col2 = [0.4,0.4,0.4]
-        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, col1, col2) )
+        self.add_shape_geo( roundoutline(self.x, self.y, self.w, self.h, [1.0,0.0,0.0]) )
+        
         super(SliderControl, self).activate()
     
     def deactivate(self):
         col1 = [0.5,0.5,0.5]
         col2 = [0.6,0.6,0.6]
-        self.geo = roundbase(self.x, self.y, self.w, self.h, col1, col2)
+        self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, col1, col2) )
+        self.add_shape_geo( roundoutline(self.x, self.y, self.w, self.h, [1.0,0.0,0.0]) )
+        
         super(SliderControl, self).deactivate()
     
     def press(self, x, y, buttons, modifiers):
@@ -355,3 +374,4 @@ class SliderControl(UiTextEditControl):
             self.setval( self.getval() + dx )
             self.text_from_val()
             self.update_draw()
+
