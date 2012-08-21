@@ -95,8 +95,13 @@ def roundbase(x, y, w, h, col1, col2):
     colors = np.repeat(v, 3).reshape(-1,3)
     colors = fit(colors, np.array(col1), np.array(col2))
     colors = list(colors.flat)
-    
-    return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
+        
+    return {'id':'roundbase',
+            'len': len(geo)//2,
+            'mode':GL_QUAD_STRIP,
+            'vertices':geo,
+            'colors':colors
+            }
     
 
 def roundoutline(x, y, w, h, col):
@@ -112,7 +117,12 @@ def roundoutline(x, y, w, h, col):
 
     colors = [0.0]*3*(len(outline)//2)
     
-    return {'mode':GL_LINE_LOOP, 'vertices':outline, 'colors':colors}
+    return {'id':'roundoutline',
+            'len': len(geo)//2,
+            'mode':GL_LINE_LOOP,
+            'vertices':outline,
+            'colors':colors
+            }
 
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)
