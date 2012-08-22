@@ -7,7 +7,7 @@ import numpy as np
 
 np.set_printoptions(precision=3,suppress=True)
 
-def quad_strip_fix(sequence, size):
+def strip_fix(sequence, size):
     '''
     add degenerate verts at start and end to satisfy pyglet QUAD_STRIP handling
     '''
@@ -21,8 +21,8 @@ def quad_strip_fix(sequence, size):
     #interleaved = np.append(interleaved, [last], axis=0)
     '''
 
-
-def roundbase2(x, y, w, h):
+'''
+def roundbase2(x, y, w, h, r):
     geo = []
     colors = []
     r = 6         # radius
@@ -56,14 +56,12 @@ def roundbase2(x, y, w, h):
     colors = colors = [0.7]*3*(len(geo)//2)
     
     return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
-    
+'''    
+
 def fit(v, mi, mx):
     return (v  * (mx-mi)) + mi
 
-#def fitc(v, mi, mx):
-    
-
-def roundbase(x, y, w, h, col1, col2):
+def roundbase(x, y, w, h, r, col1, col2):
     geo = []
     colors = []
     r = h * 0.35         # radius
@@ -87,12 +85,12 @@ def roundbase(x, y, w, h, col1, col2):
                 y0 += ch
             geo += [x1+x, y0+y,  x2+x+w, y0+y]
 
-    geo = quad_strip_fix(geo, 2)
+    geo = strip_fix(geo, 2)
     
     # generate uv v coord from vertex y height
     v = [ (gy-y)/h for gy in geo[1::2] ]    # vertex y = slice to find odd list items
     
-    colors = np.repeat(v, 3).reshape(-1,3)
+    colors = np.repeat(v, 4).reshape(-1,4)
     colors = fit(colors, np.array(col1), np.array(col2))
     colors = list(colors.flat)
         
@@ -104,8 +102,10 @@ def roundbase(x, y, w, h, col1, col2):
             }
     
 
-def roundoutline(x, y, w, h, col):
-    data = roundbase(x, y, w, h, [0]*3, [0]*3)
+def roundoutline(x, y, w, h, r, col):
+    data = roundbase(x, y, w, h, r, [0]*4, [0]*4)
+    
+    alpha = col[3]
     
     geo = data['vertices'][2:-2]
     garray = np.array( geo ).reshape(-1,2)
@@ -113,17 +113,22 @@ def roundoutline(x, y, w, h, col):
     # re-arrange quad strip vertex list into a loop
     leftside = garray[::2]             # even vertices
     rightside = garray[1::2][::-1]     # odd vertices, reversed
-    outline = list( np.append(leftside, rightside).reshape(-1,2).flat )
+    outline = np.append(leftside, rightside).reshape(-1,2)
+    
+    # double up & roll verts for GL_LINES
+    outline = np.repeat(outline, 2, axis=0)
+    outline = np.roll(outline, -1, axis=0)
+    outline = list( outline.flat )
 
-    colors = [0.0]*3*(len(outline)//2)
+    colors = col*(len(outline)//2)
     
     return {'id':'roundoutline',
-            'len': len(geo)//2,
-            'mode':GL_LINE_LOOP,
+            'len': len(outline)//2,
+            'mode':GL_LINES,
             'vertices':outline,
             'colors':colors
             }
 
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)
-    roundoutline(10, 10, 80, 20, [0.2]*3)
+    roundoutline(10, 10, 80, 20, 2, [0.2]*4)
