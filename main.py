@@ -23,7 +23,9 @@ except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
 '''
-window = pyglet.window.Window(resizable=True)
+window = pyglet.window.Window(500, 300, resizable=True)
+#window.set_location(2600, 800)
+window.set_location(1600, 800)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
@@ -47,15 +49,14 @@ def on_draw():
                camera.center[0], camera.center[1], camera.center[2],
                camera.up[0], camera.up[1], camera.up[2]);
 
-
     batch.draw()
     
 def setup():
     # One-time GL setup
-    glClearColor(0.1, 0.1, 0.1, 1)
+    glClearColor(0.4, 0.4, 0.4, 1)
 
 
-class GridGroup(pyglet.graphics.Group):
+class GridGroup(pyglet.graphics.OrderedGroup):
     def set_state(self):
         glColor3f(0.2, 0.2, 0.2)
         
@@ -158,9 +159,10 @@ class Particles(object):
         self.locs += np.array([0,size,0])
         self.vels = (np.random.rand(num, 3)-0.5)
         self.flush()
+
+        #colors = [0.5]*(num*3)
+        colors = tuple(np.random.rand(num, 3).flat)
         
-        #colors = [random() for i in range(num*3)]
-        colors = [0.5]*(num*3)
         self.vertex_list = batch.add(len(self.vertices)//3, 
                                              GL_POINTS,
                                              group,
@@ -196,7 +198,7 @@ def euler_particles(dt):
 pyglet.clock.schedule(euler_particles)
 
 geogroup = GeometryGroup()
-gridgroup = GridGroup()
+gridgroup = GridGroup(0)
 axesgroup = AxesGroup()
 partgroup = ParticlesGroup()
 batch = pyglet.graphics.Batch()
@@ -205,13 +207,17 @@ camera = camera.Camera(window)
 
 setup()
 
-grid = ui3d.Grid(2, 6, batch, group=gridgroup )
+def myfunc():
+    return ui3d.Grid(2, 6, batch, group=gridgroup )
+
+#grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
-particles = Particles(5000, 3, batch, group=partgroup)
+particles = Particles(2, 3, batch, group=partgroup)
 
 ui = ui2d.Ui(window)
-ui.addControl(particles, "force", ui2d.UiControls.TOGGLE)
-ui.addControl(camera, "fov", ui2d.UiControls.SLIDER, vmin=5, vmax=120)
+ui.addControl(ui2d.UiControls.TOGGLE, object=particles, attr="force")
+ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
+ui.addControl(func=myfunc)
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
