@@ -121,9 +121,6 @@ class UiControl(object):
         self.active = False
         self.textediting = False
 
-        self.min = vmin
-        self.max = vmax
-
         self.ui = ui
         self.vertex_lists = {}
         
@@ -132,11 +129,9 @@ class UiControl(object):
                         group=ui.control_label_group,
                         x=x+8, y=y+4,
                         **UiControls.font_style)
-        self.label.anchor_y = 'baseline'
-        self.label.height = h
-
+        
+        self.update_label()
         self.update_draw()
-
 
     def add_shape_geo(self, shapegeo):
         id = shapegeo['id']
@@ -172,9 +167,13 @@ class UiControl(object):
             v.delete()
     
     # override in subclasses
+    def update_label(self):
+        self.label.anchor_y = 'baseline'
+        self.label.height = self.h
+
     def update_draw(self):
         pass
-    
+
     def press(self, *args, **kwargs):
         pass
     def release(self, *args, **kwargs):
@@ -183,11 +182,6 @@ class UiControl(object):
         pass
     def release_outside(self, x, y, buttons, modifiers):
         self.deactivate()
-    
-    def getval(self):
-        return getattr(self.object, self.attr)
-    def setval(self, newval):
-        setattr(self.object, self.attr, min(self.max, max(self.min, newval )) )
 
     def activate(self):
         self.active = True
@@ -220,6 +214,11 @@ class UiAttrControl(UiControl):
         self.title = self.attr.capitalize()
         
         super(UiAttrControl, self).__init__( x, y, w, h, ui, **kwargs )
+
+    def getval(self):
+        return getattr(self.object, self.attr)
+    def setval(self, newval):
+        setattr(self.object, self.attr, min(self.max, max(self.min, newval )) )
 
 
 class UiTextEditControl(UiAttrControl):
@@ -299,9 +298,12 @@ class UiTextEditControl(UiAttrControl):
 
 class ToggleControl(UiAttrControl):
     
-    checkbox_w = 10
-    checkbox_h = 10
+    CHECKBOX_W = 8
+    CHECKBOX_H = 9
     
+    def update_label(self):
+        self.label.x = self.x + self.CHECKBOX_W*2 + 2
+
     def update_draw(self):
         
         if self.getval():
@@ -309,20 +311,22 @@ class ToggleControl(UiAttrControl):
             col2 = [0.30]*3 + [1.0]
             coltext = [255]*4
             outline_col = [.1,.1,.1, .5]
+            checkmark_col = [0.1,0.1,0.1,1.0]
         else:
             col2 = [0.5]*3 + [1.0]
             col1 = [0.6]*3 + [1.0]
             coltext = [0,0,0,255]
             outline_col = [.2,.2,.2, 0.5]
+            checkmark_col = [0.1,0.1,0.1,0.0]
         
-        cbw = self.checkbox_w
-        cbh = self.checkbox_h
+        cbw = self.CHECKBOX_W
+        cbh = self.CHECKBOX_H
         cbx = self.x + 2
         cby = self.y + (self.h - cbh)*0.5
         
         self.add_shape_geo( roundbase(cbx, cby, cbw, cbh, 2, col1, col2) )
         self.add_shape_geo( roundoutline(cbx, cby, cbw, cbh, 2, outline_col) )
-        
+        self.add_shape_geo( checkmark(cbx, cby, cbw, cbh, checkmark_col) )
         self.label.color = coltext
     
     def press(self, x, y, buttons, modifiers):
@@ -345,16 +349,19 @@ class SliderControl(UiTextEditControl):
             col2 = [0.3,0.3,0.3, 1.0]
             col1 = [0.4,0.4,0.4, 1.0]
             outline_col = [.1,.1,.1, .5]
+            coltext = [255]*4
         else:
             col2 = [0.5,0.5,0.5, 1.0]
             col1 = [0.6,0.6,0.6, 1.0]
             outline_col = [.3,.3,.3, 0.5]
+            coltext = [0,0,0,255]
     
         w = self.NUM_VALUE_WIDTH
         x = self.x + self.w - w
     
         self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col1, col2) )
         self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col) )
+        self.document.set_style(0, len(self.document.text), {'color': coltext})
 
     def press(self, x, y, buttons, modifiers):
         if self.textediting:
@@ -393,18 +400,25 @@ class ActionControl(UiControl):
         
         super(ActionControl, self).__init__( x, y, w, h, ui, **kwargs )
     
+    def update_label(self):
+        self.label.anchor_x = 'center'
+        self.label.x = self.x + self.w//2
+
     def update_draw(self):
         
         if self.active:
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
+            outline_col = [.1,.1,.1, .5]
             coltext = [255]*4
         else:
             col1 = [0.5]*3 + [1.0]
             col2 = [0.6]*3 + [1.0]
+            outline_col = [.3,.3,.3, 0.5]
             coltext = [0,0,0,255]
             
         self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, 6, col1, col2) )
+        self.add_shape_geo( roundoutline(self.x, self.y, self.w, self.h, 6, outline_col) )
         self.label.color = coltext
     
     def press(self, x, y, buttons, modifiers):

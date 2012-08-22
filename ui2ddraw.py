@@ -129,6 +129,25 @@ def roundoutline(x, y, w, h, r, col):
             'colors':colors
             }
 
+def checkmark(x, y, w, h, col):
+
+    cy = y + h*0.2
+    checkmark =   [ x+w*0.4, y+h*0.5,
+                    x+w*0.7, y+h*0.2,
+                    x+w*0.7, y+h*0.2,
+                    x+w*1.2, cy+h ]
+
+    colors = col*(len(checkmark)//2)
+    
+
+    return {'id':'checkmarkoutline',
+            'len': len(checkmark)//2,
+            'mode': GL_LINES,
+            'vertices': checkmark,
+            'colors': colors
+            }
+
+
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)
     roundoutline(10, 10, 80, 20, 2, [0.2]*4)

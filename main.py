@@ -25,7 +25,7 @@ except pyglet.window.NoSuchConfigException:
 '''
 window = pyglet.window.Window(500, 300, resizable=True)
 #window.set_location(2600, 800)
-window.set_location(1600, 800)
+#window.set_location(1600, 800)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
