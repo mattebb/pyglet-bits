@@ -25,7 +25,7 @@ except pyglet.window.NoSuchConfigException:
 '''
 window = pyglet.window.Window(500, 300, resizable=True)
 #window.set_location(2600, 800)
-#window.set_location(1600, 800)
+window.set_location(1600, 800)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
@@ -126,6 +126,66 @@ class GeometryGroup(pyglet.graphics.Group):
         glDisable(GL_LIGHT1)
         
 
+class Cube(object):
+    
+    def __init__(self, batch, group=None):
+        
+        self.vertices = [
+                      # Front face
+                      -1.0, -1.0,  1.0,
+                       1.0, -1.0,  1.0,
+                       1.0,  1.0,  1.0,
+                      -1.0,  1.0,  1.0,
+                       
+                      # Back face
+                      -1.0, -1.0, -1.0,
+                      -1.0,  1.0, -1.0,
+                       1.0,  1.0, -1.0,
+                       1.0, -1.0, -1.0,
+                       
+                      # Top face
+                      -1.0,  1.0, -1.0,
+                      -1.0,  1.0,  1.0,
+                       1.0,  1.0,  1.0,
+                       1.0,  1.0, -1.0,
+                       
+                      # Bottom face
+                      -1.0, -1.0, -1.0,
+                       1.0, -1.0, -1.0,
+                       1.0, -1.0,  1.0,
+                      -1.0, -1.0,  1.0,
+                       
+                      # Right face
+                       1.0, -1.0, -1.0,
+                       1.0,  1.0, -1.0,
+                       1.0,  1.0,  1.0,
+                       1.0, -1.0,  1.0,
+                       
+                      # Left face
+                      -1.0, -1.0, -1.0,
+                      -1.0, -1.0,  1.0,
+                      -1.0,  1.0,  1.0,
+                      -1.0,  1.0, -1.0
+                    ]
+
+        self.indices = [
+                      0,  1,  2,      0,  2,  3,    # front
+                      4,  5,  6,      4,  6,  7,    # back
+                      8,  9,  10,     8,  10, 11,   # top
+                      12, 13, 14,     12, 14, 15,   # bottom
+                      16, 17, 18,     16, 18, 19,   # right
+                      20, 21, 22,     20, 22, 23    # left
+                    ]
+ 
+        self.vertex_list = batch.add_indexed(len(self.vertices)//3,
+                                             GL_TRIANGLES,
+                                             group,
+                                             self.indices,
+                                             ('v3f/static', self.vertices),
+                                             )
+    
+    def delete(self):
+        self.vertex_list.delete()
 
 class Particles(object):
     
@@ -213,11 +273,13 @@ def myfunc():
 #grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
 particles = Particles(2, 3, batch, group=partgroup)
+cube = Cube( batch, group=axesgroup)
 
 ui = ui2d.Ui(window)
 ui.addControl(ui2d.UiControls.TOGGLE, object=particles, attr="force")
 ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
 ui.addControl(func=myfunc)
+
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
