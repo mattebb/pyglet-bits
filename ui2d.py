@@ -20,7 +20,7 @@ class uiGroup(pyglet.graphics.OrderedGroup):
         glLoadIdentity()
         #glTranslatef(0.375, 0.375, 0.0)
         
-        #glDisable(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST);
 
     def unset_state(self):
         pass
@@ -92,7 +92,7 @@ class Ui(object):
         self.window = window
         self.controls = []
         self.batch = pyglet.graphics.Batch()
-        self.control_group = uiGroup(2, window)
+        self.control_group = uiGroup(3, window)
         self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
         self.control_label_group = uiGroup(10, window, parent=self.control_group)
         
@@ -298,7 +298,7 @@ class UiTextEditControl(UiAttrControl):
 
 class ToggleControl(UiAttrControl):
     
-    CHECKBOX_W = 8
+    CHECKBOX_W = 7
     CHECKBOX_H = 9
     
     def update_label(self):
@@ -310,14 +310,14 @@ class ToggleControl(UiAttrControl):
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
             coltext = [255]*4
-            outline_col = [.1,.1,.1, .5]
-            checkmark_col = [0.1,0.1,0.1,1.0]
+            outline_col = [.2,.2,.2, 1.0]
+            checkmark_col = [1,1,1,1.0]
         else:
             col2 = [0.5]*3 + [1.0]
             col1 = [0.6]*3 + [1.0]
             coltext = [0,0,0,255]
-            outline_col = [.2,.2,.2, 0.5]
-            checkmark_col = [0.1,0.1,0.1,0.0]
+            outline_col = [.25,.25,.25, 1.0]
+            checkmark_col = [0,0,0,0.0]
         
         cbw = self.CHECKBOX_W
         cbh = self.CHECKBOX_H
@@ -348,12 +348,12 @@ class SliderControl(UiTextEditControl):
         if self.active:
             col2 = [0.3,0.3,0.3, 1.0]
             col1 = [0.4,0.4,0.4, 1.0]
-            outline_col = [.1,.1,.1, .5]
+            outline_col = [.2,.2,.2, 1.0]
             coltext = [255]*4
         else:
             col2 = [0.5,0.5,0.5, 1.0]
             col1 = [0.6,0.6,0.6, 1.0]
-            outline_col = [.3,.3,.3, 0.5]
+            outline_col = [.2,.2,.2, 1.0]
             coltext = [0,0,0,255]
     
         w = self.NUM_VALUE_WIDTH
@@ -409,12 +409,12 @@ class ActionControl(UiControl):
         if self.active:
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
-            outline_col = [.1,.1,.1, .5]
+            outline_col = [.2,.2,.2, 1.0]
             coltext = [255]*4
         else:
             col1 = [0.5]*3 + [1.0]
             col2 = [0.6]*3 + [1.0]
-            outline_col = [.3,.3,.3, 0.5]
+            outline_col = [.25,.25,.25, 1.0]
             coltext = [0,0,0,255]
             
         self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, 6, col1, col2) )
