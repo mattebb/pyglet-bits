@@ -2,10 +2,28 @@ from pyglet.gl import *
 
 import math
 from math import sin, cos, pi
+from random import random
 
 import numpy as np
 
 np.set_printoptions(precision=3,suppress=True)
+
+def aajitter(seq, colors):
+    samples = 16
+    sp = 1.0
+
+    ar = np.array(seq).reshape(-1,2)
+    jitter_ar = ar.copy()
+    
+    for i in range(1, samples):
+        j = ar + np.array([sp*random(), sp*random()])
+        jitter_ar = np.concatenate((jitter_ar, j))
+
+    colors = np.array(colors).reshape(-1,4)
+    colors *= np.array( [1,1,1, 1.0/samples] )
+    colors = np.tile(colors, (samples,1))
+
+    return ( list(jitter_ar.flat), list(colors.flat) )
 
 def strip_fix(sequence, size):
     '''
@@ -14,13 +32,102 @@ def strip_fix(sequence, size):
     l = list(sequence)
     return l[:size] + l + l[-size:]
 
-    '''
-    # add degenerate verts to numpy array
-    #interleaved = np.insert(interleaved, 0, interleaved[0,:], axis=0)
-    #last = interleaved[len(interleaved)-1,:]
-    #interleaved = np.append(interleaved, [last], axis=0)
-    '''
 
+def fit(v, mi, mx):
+    return (v  * (mx-mi)) + mi
+
+def round_strip(x, y, w, h, r):
+    geo = []
+    rsteps = 2      # radial divisions
+    ch = h - 2*r    # central area height
+    
+    # draw rounded box, horizontal quads, bottom to top
+    for i in range(-rsteps,rsteps+1):
+        theta = pi/2.0 * i/(float(rsteps))
+        
+        if i == 0:
+            # central rect
+            geo += [x, r+y,      r+x+w, r+y]
+            geo += [x, r+y+ch,   r+x+w, r+y+ch]
+        else:
+            # rounded edges
+            x2 = cos(theta)*r
+            y0 = sin(theta)*r + r
+            x1 = r - x2
+            if i > 0:
+                y0 += ch
+            geo += [x1+x, y0+y,  x2+x+w, y0+y]
+    return geo
+    
+def roundbase(x, y, w, h, r, col1, col2):
+    geo = round_strip(x,y,w,h,r)
+    geo = strip_fix(geo, 2)
+    
+    # generate uv v coord from vertex y height
+    v = [ (gy-y)/h for gy in geo[1::2] ]    # vertex y = slice to find odd list items
+    
+    colors = np.repeat(v, 4).reshape(-1,4)
+    colors = fit(colors, np.array(col1), np.array(col2))
+    colors = list(colors.flat)
+        
+    return {'id':'roundbase',
+            'len': len(geo)//2,
+            'mode':GL_QUAD_STRIP,
+            'vertices':geo,
+            'colors':colors
+            }
+    
+
+def roundoutline(x, y, w, h, r, col):
+    geo = round_strip(x, y, w, h, r)
+    garray = np.array( geo ).reshape(-1,2)
+
+    # re-arrange quad strip vertex list into a loop
+    leftside = garray[::2]             # even vertices
+    rightside = garray[1::2][::-1]     # odd vertices, reversed
+    outline = np.append(leftside, rightside).reshape(-1,2)
+    
+    # double up & roll verts for GL_LINES
+    outline = np.repeat(outline, 2, axis=0)
+    outline = np.roll(outline, -1, axis=0)
+    outline = list( outline.flat )
+
+    colors = col*(len(outline)//2)
+    
+    outline, colors = aajitter(outline, colors)
+    
+    return {'id':'roundoutline',
+            'len': len(outline)//2,
+            'mode':GL_LINES,
+            'vertices':outline,
+            'colors':colors
+            }
+
+def checkmark(x, y, w, h, col):
+
+    checkmark =   [ x+w*0.3, y+h*0.5,
+                    x+w*0.7, y+h*0.2,
+                    x+w*0.7, y+h*0.2,
+                    x+w*1.3, y+h+0.3*h ]
+
+    colors = col*(len(checkmark)//2)
+    
+    checkmark, colors = aajitter(checkmark, colors)
+
+    return {'id':'checkmarkoutline',
+            'len': len(checkmark)//2,
+            'mode': GL_LINES,
+            'vertices': checkmark,
+            'colors': colors
+            }
+
+
+if __name__ == '__main__':
+    np.set_printoptions(precision=3,suppress=True)
+    roundoutline(10, 10, 80, 20, 2, [0.2]*4)
+    
+    
+    
 '''
 def roundbase2(x, y, w, h, r):
     geo = []
@@ -57,97 +164,3 @@ def roundbase2(x, y, w, h, r):
     
     return {'mode':GL_QUAD_STRIP, 'vertices':geo, 'colors':colors}
 '''    
-
-def fit(v, mi, mx):
-    return (v  * (mx-mi)) + mi
-
-def roundbase(x, y, w, h, r, col1, col2):
-    geo = []
-    colors = []
-    r = h * 0.35         # radius
-    rsteps = 2      # radial divisions
-    ch = h - 2*r    # central area height
-    
-    # draw rounded box, horizontal quads, bottom to top
-    for i in range(-rsteps,rsteps+1):
-        theta = pi/2.0 * i/(float(rsteps))
-        
-        if i == 0:
-            # central rect
-            geo += [x, r+y,      r+x+w, r+y]
-            geo += [x, r+y+ch,   r+x+w, r+y+ch]
-        else:
-            # rounded edges
-            x2 = cos(theta)*r
-            y0 = sin(theta)*r + r
-            x1 = r - x2
-            if i > 0:
-                y0 += ch
-            geo += [x1+x, y0+y,  x2+x+w, y0+y]
-
-    geo = strip_fix(geo, 2)
-    
-    # generate uv v coord from vertex y height
-    v = [ (gy-y)/h for gy in geo[1::2] ]    # vertex y = slice to find odd list items
-    
-    colors = np.repeat(v, 4).reshape(-1,4)
-    colors = fit(colors, np.array(col1), np.array(col2))
-    colors = list(colors.flat)
-        
-    return {'id':'roundbase',
-            'len': len(geo)//2,
-            'mode':GL_QUAD_STRIP,
-            'vertices':geo,
-            'colors':colors
-            }
-    
-
-def roundoutline(x, y, w, h, r, col):
-    data = roundbase(x, y, w, h, r, [0]*4, [0]*4)
-    
-    alpha = col[3]
-    
-    geo = data['vertices'][2:-2]
-    garray = np.array( geo ).reshape(-1,2)
-
-    # re-arrange quad strip vertex list into a loop
-    leftside = garray[::2]             # even vertices
-    rightside = garray[1::2][::-1]     # odd vertices, reversed
-    outline = np.append(leftside, rightside).reshape(-1,2)
-    
-    # double up & roll verts for GL_LINES
-    outline = np.repeat(outline, 2, axis=0)
-    outline = np.roll(outline, -1, axis=0)
-    outline = list( outline.flat )
-
-    colors = col*(len(outline)//2)
-    
-    return {'id':'roundoutline',
-            'len': len(outline)//2,
-            'mode':GL_LINES,
-            'vertices':outline,
-            'colors':colors
-            }
-
-def checkmark(x, y, w, h, col):
-
-    cy = y + h*0.2
-    checkmark =   [ x+w*0.4, y+h*0.5,
-                    x+w*0.7, y+h*0.2,
-                    x+w*0.7, y+h*0.2,
-                    x+w*1.2, cy+h ]
-
-    colors = col*(len(checkmark)//2)
-    
-
-    return {'id':'checkmarkoutline',
-            'len': len(checkmark)//2,
-            'mode': GL_LINES,
-            'vertices': checkmark,
-            'colors': colors
-            }
-
-
-if __name__ == '__main__':
-    np.set_printoptions(precision=3,suppress=True)
-    roundoutline(10, 10, 80, 20, 2, [0.2]*4)
