@@ -1,11 +1,13 @@
 from random import random
 
 import euclid
-from euclid import Vector3, Point3
+from euclid import Vector3, Point3, Matrix4
 import math
 
 import ui2d
 import ui3d
+
+import ctypes
 
 import pyglet
 from pyglet.gl import *
@@ -50,6 +52,9 @@ def on_draw():
                camera.up[0], camera.up[1], camera.up[2]);
 
     batch.draw()
+    
+    for ob in scene.objects:
+        ob.draw()
     
 def setup():
     # One-time GL setup
@@ -125,10 +130,28 @@ class GeometryGroup(pyglet.graphics.Group):
         glDisable(GL_LIGHT0)
         glDisable(GL_LIGHT1)
         
+class Scene(object):
+    def __init__(self):
+        self.objects = []
 
-class Cube(object):
+class Object3d(object):
+    def __init__(self, scene):
+        self.batch = pyglet.graphics.Batch()
+        self.group = pyglet.graphics.Group()
+        
+        #self.matrix = Matrix4()
+        self.translate = Vector3(0,0,0)
+        self.rotate= Vector3(0,0,0)
+        self.scale= Vector3(1,1,1)
+        
+        scene.objects.append( self )
+
+class Cube(Object3d):
     
-    def __init__(self, batch, group=None):
+    def __init__(self, *args, **kwargs):
+        super(Cube, self).__init__(*args, **kwargs)
+        
+        self.translatex = 0
         
         self.vertices = [
                       # Front face
@@ -177,12 +200,24 @@ class Cube(object):
                       20, 21, 22,     20, 22, 23    # left
                     ]
  
-        self.vertex_list = batch.add_indexed(len(self.vertices)//3,
+        self.vertex_list = self.batch.add_indexed(len(self.vertices)//3,
                                              GL_TRIANGLES,
-                                             group,
+                                             self.group,
                                              self.indices,
                                              ('v3f/static', self.vertices),
                                              )
+    
+    def draw(self):
+        self.translate[0] = self.translatex
+
+        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate).scale(*self.scale)
+        #print(self.matrix)
+        
+        glPushMatrix()
+        glMultMatrixf( (ctypes.c_float*16)(*m) )
+        self.batch.draw()
+        glPopMatrix()
+        
     
     def delete(self):
         self.vertex_list.delete()
@@ -257,6 +292,8 @@ def euler_particles(dt):
 
 pyglet.clock.schedule(euler_particles)
 
+scene = Scene()
+
 geogroup = GeometryGroup()
 gridgroup = GridGroup(0)
 axesgroup = AxesGroup()
@@ -273,11 +310,12 @@ def myfunc():
 #grid = ui3d.Grid(2, 6, batch, group=gridgroup )
 axes = ui3d.Axes(0.5, batch, group=axesgroup )
 particles = Particles(2, 3, batch, group=partgroup)
-cube = Cube( batch, group=axesgroup)
+cube = Cube( scene )
 
 ui = ui2d.Ui(window)
 ui.addControl(ui2d.UiControls.TOGGLE, object=particles, attr="force")
-ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
+#ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
+ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
 ui.addControl(func=myfunc)
 
 
