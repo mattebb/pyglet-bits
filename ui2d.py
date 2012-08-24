@@ -100,8 +100,19 @@ class Ui(object):
         window.push_handlers(ui_handlers)
 
     def addControl(self, type=None, **kwargs):
+        
+        
         if type == UiControls.SLIDER:
-            self.controls.append( SliderControl( 10, 30, 120, 16, self, **kwargs ) )
+            
+            if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
+                if hasattr(kwargs['object'], kwargs['attr']):
+                    attr = getattr(kwargs['object'], kwargs['attr'])
+                    if hasattr(attr, "__getitem__"):  # if attr is subscriptable
+                        for i in range(len(attr)):
+                            self.controls.append( SliderControl( 10, 90+i*20, 120, 16, self, element=i, **kwargs ) )
+                            
+            
+            #self.controls.append( SliderControl( 10, 30, 120, 16, self, **kwargs ) )
             
         elif type == UiControls.TOGGLE:
             self.controls.append( ToggleControl( 10, 10, 120, 16, self, **kwargs ) )
@@ -200,7 +211,7 @@ class UiControl(object):
 
 class UiAttrControl(UiControl):
     
-    def __init__(self, x, y, w, h, ui, object=None, attr='', vmin=0, vmax=100, **kwargs):
+    def __init__(self, x, y, w, h, ui, object=None, attr='', element=None, vmin=0, vmax=100, **kwargs):
         
         self.object = object
         if hasattr(object, attr):
@@ -208,6 +219,7 @@ class UiAttrControl(UiControl):
         else:
             raise ValueError("Invalid attribute provided: %s" % attr)
 
+        self.element = element
         self.min = vmin
         self.max = vmax
         
@@ -216,9 +228,28 @@ class UiAttrControl(UiControl):
         super(UiAttrControl, self).__init__( x, y, w, h, ui, **kwargs )
 
     def getval(self):
-        return getattr(self.object, self.attr)
+        attr = getattr(self.object, self.attr)
+        
+        print('get', self.element)
+        
+        #if hasattr(attr, "__getitem__")  # if attr is subscriptable
+        if self.element is not None:
+            return attr[self.element]
+        else:
+            return attr
+        
     def setval(self, newval):
-        setattr(self.object, self.attr, min(self.max, max(self.min, newval )) )
+        newattr = getattr(self.object, self.attr)
+        
+        print('set', self.element, newval)
+        
+        #if hasattr(attr, "__getitem__")  # if attr is subscriptable
+        if self.element is not None:
+            newattr[self.element] = min(self.max, max(self.min, newval))
+        else:
+            newattr = min(self.max, max(self.min, newval))
+        
+        #setattr(self.object, self.attr, newattr)
 
 
 class UiTextEditControl(UiAttrControl):
@@ -254,7 +285,7 @@ class UiTextEditControl(UiAttrControl):
     def val_from_text(self):
         try:
             val = float(self.document.text)
-            setattr(self.object, self.attr, min(self.max, max(self.min, val )) )
+            self.setval(val)
         except:
             pass
 
