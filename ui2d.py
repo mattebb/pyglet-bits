@@ -86,6 +86,27 @@ class UiEventHandler(object):
                 control.textedit_cancel()
             return pyglet.event.EVENT_HANDLED
 
+class LayoutGroup(object):
+    
+    VERTICAL = 1
+    HORIZONTAL = 2
+    
+    def __init__(self):
+        self.direction = self.VERTICAL
+        self.items = []
+    '''
+    @classmethod
+    def layout(self, object, attr):
+        
+        # generic sequence
+        if hasattr(kwargs['object'], kwargs['attr']):
+            attr = getattr(kwargs['object'], kwargs['attr'])
+            if hasattr(attr, "__getitem__"):  # if attr is subscriptable
+                for i in range(len(attr)):                    
+                    title = attr.capitalize() if i == 0 else ''
+                    
+    '''
+
 class Ui(object):
 
     def __init__(self, window):
@@ -109,20 +130,23 @@ class Ui(object):
                     attr = getattr(kwargs['object'], kwargs['attr'])
                     if hasattr(attr, "__getitem__"):  # if attr is subscriptable
                         for i in range(len(attr)):
-                            self.controls.append( SliderControl( 10, 90+i*20, 120, 16, self, element=i, **kwargs ) )
+                            slider = SliderControl( self, x=10, y=90+i*20, w=120, h=16, element=i, **kwargs )
+                            self.controls.append( slider )
                             
             
             #self.controls.append( SliderControl( 10, 30, 120, 16, self, **kwargs ) )
             
         elif type == UiControls.TOGGLE:
-            self.controls.append( ToggleControl( 10, 10, 120, 16, self, **kwargs ) )
+            toggle = ToggleControl( self, x=10, y=10, w=120, h=16, **kwargs )
+            self.controls.append( toggle )
             
         else:
-            self.controls.append( ActionControl( 10, 50, 120, 16, self, **kwargs ) )
+            action = ActionControl( self, x=10, y=50, w=120, h=16, **kwargs )
+            self.controls.append( action )
 
 
 class UiControl(object):
-    def __init__(self, x, y, w, h, ui, object=None, attr='', vmin=0, vmax=100):
+    def __init__(self, ui, x=0, y=0, w=100, h=20, object=None, attr='', vmin=0, vmax=100):
         self.x = x
         self.y = y
         self.w = w
@@ -138,7 +162,7 @@ class UiControl(object):
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
                         group=ui.control_label_group,
-                        x=x+8, y=y+4,
+                        x=0, y=0,
                         **UiControls.font_style)
         
         self.update_label()
@@ -180,6 +204,8 @@ class UiControl(object):
     # override in subclasses
     def update_label(self):
         self.label.anchor_y = 'baseline'
+        self.label.x = self.x+8
+        self.label.y = self.y+4
         self.label.height = self.h
 
     def update_draw(self):
@@ -211,7 +237,7 @@ class UiControl(object):
 
 class UiAttrControl(UiControl):
     
-    def __init__(self, x, y, w, h, ui, object=None, attr='', element=None, vmin=0, vmax=100, **kwargs):
+    def __init__(self, ui, object=None, attr='', title=None, element=-1, vmin=0, vmax=100, **kwargs):
         
         self.object = object
         if hasattr(object, attr):
@@ -223,42 +249,50 @@ class UiAttrControl(UiControl):
         self.min = vmin
         self.max = vmax
         
-        self.title = self.attr.capitalize()
+        if title == None:
+            self.title = self.attr.capitalize()
+        else:
+            self.title = title
         
-        super(UiAttrControl, self).__init__( x, y, w, h, ui, **kwargs )
+        super(UiAttrControl, self).__init__( ui, **kwargs )
 
     def getval(self):
         attr = getattr(self.object, self.attr)
         
-        print('get', self.element)
-        
-        #if hasattr(attr, "__getitem__")  # if attr is subscriptable
-        if self.element is not None:
+        if self.element != -1:
             return attr[self.element]
         else:
             return attr
-        
-    def setval(self, newval):
-        newattr = getattr(self.object, self.attr)
-        
-        print('set', self.element, newval)
-        
-        #if hasattr(attr, "__getitem__")  # if attr is subscriptable
-        if self.element is not None:
-            newattr[self.element] = min(self.max, max(self.min, newval))
+    
+    def limited(self, val, newval):
+        if type(val) in ('float', 'int'):
+            return min(self.max, max(self.min, newval))
         else:
-            newattr = min(self.max, max(self.min, newval))
+            return newval
+    
+    def setval(self, newval):
+        attr = getattr(self.object, self.attr)
         
-        #setattr(self.object, self.attr, newattr)
+        if self.element != -1:
+            attr[self.element] = self.limited( attr[self.element], newval )
+        else:
+            attr = self.limited(attr, newval)
+        
+        setattr(self.object, self.attr, attr)
 
 
 class UiTextEditControl(UiAttrControl):
     
     NUM_VALUE_WIDTH = 56
     
-    def __init__(self, x, y, w, h, ui, **kwargs):
+    def __init__(self, ui, **kwargs):
         self.document = pyglet.text.document.UnformattedDocument( '' )
         self.document.set_style(0, len(self.document.text), UiControls.font_style)
+
+        w = kwargs['w']
+        h = kwargs['h']
+        x = kwargs['x']
+        y = kwargs['y']
 
         self.layout = pyglet.text.layout.IncrementalTextLayout(
                         self.document, w, h, multiline=False,
@@ -273,7 +307,7 @@ class UiTextEditControl(UiAttrControl):
         self.layout.y = y + 4
         
         
-        super(UiTextEditControl, self).__init__( x, y, w, h, ui, **kwargs)
+        super(UiTextEditControl, self).__init__( ui, **kwargs)
         
         self.label.width = self.NUM_VALUE_WIDTH
         self.label.anchor_x = 'right'
@@ -290,7 +324,7 @@ class UiTextEditControl(UiAttrControl):
             pass
 
     def text_from_val(self):
-        self.document.text = " %.1f" % self.getval()
+        self.document.text = " %.2f" % self.getval()
 
     def textedit_begin(self):
         self.activate()
@@ -333,6 +367,7 @@ class ToggleControl(UiAttrControl):
     CHECKBOX_H = 9
     
     def update_label(self):
+        super(ToggleControl, self).update_label()
         self.label.x = self.x + self.CHECKBOX_W*2 + 2
 
     def update_draw(self):
@@ -375,6 +410,10 @@ class ToggleControl(UiAttrControl):
 
 class SliderControl(UiTextEditControl):
 
+    def drag_setval(self, dx):
+        sensitivity = (self.max - self.min) / 500.0
+        self.setval( self.getval() + sensitivity*dx )
+
     def update_draw(self):
         if self.active:
             col2 = [0.3,0.3,0.3, 1.0]
@@ -416,24 +455,26 @@ class SliderControl(UiTextEditControl):
                 return pyglet.event.EVENT_HANDLED
         
         if buttons & pyglet.window.mouse.MIDDLE:
-            self.setval( self.getval() + dx )
+            self.drag_setval(dx)
             self.text_from_val()
             self.update_draw()
 
 class ActionControl(UiControl):
     
-    def __init__(self, x, y, w, h, ui, object=None, attr='', func=None, **kwargs):
+    def __init__(self, ui, object=None, attr='', func=None, **kwargs):
         
         if func is None:
             raise ValueError('Invalid function')
         self.func = func
         self.title = self.func.__name__.capitalize()
         
-        super(ActionControl, self).__init__( x, y, w, h, ui, **kwargs )
+        super(ActionControl, self).__init__( ui, **kwargs )
     
     def update_label(self):
+        super(ActionControl, self).update_label()
         self.label.anchor_x = 'center'
         self.label.x = self.x + self.w//2
+        
 
     def update_draw(self):
         
