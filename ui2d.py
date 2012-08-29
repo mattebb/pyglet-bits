@@ -208,6 +208,10 @@ class UiControl(object):
         self.label.y = self.y+4
         self.label.height = self.h
 
+    def reposition(self):
+        self.update_label()
+        self.update_draw()
+
     def update_draw(self):
         pass
 
@@ -455,9 +459,10 @@ class SliderControl(UiTextEditControl):
                 return pyglet.event.EVENT_HANDLED
         
         if buttons & pyglet.window.mouse.MIDDLE:
-            self.drag_setval(dx)
-            self.text_from_val()
-            self.update_draw()
+            if self.active:
+                self.drag_setval(dx)
+                self.text_from_val()
+                self.update_draw()
 
 class ActionControl(UiControl):
     
