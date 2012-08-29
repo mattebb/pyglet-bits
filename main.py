@@ -151,8 +151,6 @@ class Cube(Object3d):
     def __init__(self, *args, **kwargs):
         super(Cube, self).__init__(*args, **kwargs)
         
-        self.translatex = 0
-        
         self.vertices = [
                       # Front face
                       -1.0, -1.0,  1.0,
@@ -208,10 +206,7 @@ class Cube(Object3d):
                                              )
     
     def draw(self):
-        self.translate[0] = self.translatex
-
         m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate).scale(*self.scale)
-        #print(self.matrix)
         
         glPushMatrix()
         glMultMatrixf( (ctypes.c_float*16)(*m) )
