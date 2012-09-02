@@ -2,6 +2,7 @@ import pyglet
 from pyglet.gl import *
 from pyglet.window import key
 from ui2ddraw import *
+import euclid
 
 class uiGroup(pyglet.graphics.OrderedGroup):
     def __init__(self, order, window, **kwargs):
@@ -85,27 +86,129 @@ class UiEventHandler(object):
             for control in [c for c in self.ui.controls if c.textediting]:
                 control.textedit_cancel()
             return pyglet.event.EVENT_HANDLED
+    
+    def on_resize(self, width, height):
+        self.ui.layout.reposition(w=int(width*0.35), h=height)
+        self.ui.layout.layout()
 
-class LayoutGroup(object):
+def attr_len(attr):
+    # if attr is subscriptable
+    if hasattr(attr, "__getitem__"):
+        return len(attr)
+    else:
+        return 1
+
+class UiLayout(object):
     
     VERTICAL = 1
     HORIZONTAL = 2
+    CONTROL = 3
+
+    HEIGHT = 16
     
-    def __init__(self):
-        self.direction = self.VERTICAL
+    def __init__(self, style=VERTICAL):
+        self.style = style
         self.items = []
-    '''
-    @classmethod
-    def layout(self, object, attr):
+        self.x = 10
+        self.y = 200
+        self.w = 300
+    
+    def reposition(self, x=None, y=None, w=None, h=None):
+        if x is not None:
+            self.x = x
+        if y is not None:
+            self.y = h
+        if w is not None:
+            self.w = w
+    
+    def layout(self, items=None):
+        if items is None:
+            items = self.items
+            
+        y = self.y
+        x = self.x
+        for i, item in enumerate(items):
+            item.x = x
+            item.y = y
+            item.h = self.HEIGHT
+            
+            if self.style == self.VERTICAL:
+                item.w = self.w
+                y -= self.HEIGHT + 2
+            elif self.style == self.HORIZONTAL:
+                item.w = self.w / len(items)
+                x += item.w
+            '''
+            elif self.style == self.CONTROL:
+                label = int(self.w * 0.4)
+                ctrl = (self.w - label) / (len(items)-1)
+                if i == 0:
+                    item.w = label
+                else:
+                    item.w = ctrl
+                x += item.w
+            '''
+
+            if type(item) == UiLayout:
+                item.layout(item.items)
+            
+            item.reposition()
+
+    def SliderTemplate(self, ui, **kwargs):
+        # split multi-element attribute into several ui controls
+
+        ### Clean up usage of ui/controls - should process layout rather than ui.controls
+
+        layout = UiLayout(style=UiLayout.CONTROL)
+        label = LabelControl(ui, title=kwargs['attr'].capitalize())
+        layout.items.append(label)
+
+        attr = getattr( kwargs['object'], kwargs['attr'])
+            
         
-        # generic sequence
-        if hasattr(kwargs['object'], kwargs['attr']):
-            attr = getattr(kwargs['object'], kwargs['attr'])
-            if hasattr(attr, "__getitem__"):  # if attr is subscriptable
-                for i in range(len(attr)):                    
-                    title = attr.capitalize() if i == 0 else ''
-                    
-    '''
+        if attr_len(attr) is None:
+            control = SliderControl(ui, title='', **kwargs)
+            layout.items.append(control)
+            ui.controls.append(control)
+        else:
+            for i in range(attr_len(attr)):
+                control = SliderControl(ui, title='', element=i, **kwargs)
+                layout.items.append(control)
+                ui.controls.append(control)
+
+        return layout
+
+    
+    def addControl(self, ui, **kwargs):
+        
+        # detect ui control type and length
+        
+        # attribute controls
+        if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
+            attr = getattr( kwargs['object'], kwargs['attr'])
+            
+            #alen = attr_len(attr)
+            
+            if type(attr) in (float, int, euclid.Point3, euclid.Vector3):
+                controltype = SliderControl
+                #layoutstyle = UiLayout.CONTROL
+                
+            elif type(attr) in (bool,):
+                controltype = ToggleControl
+                #layoutstyle = UiLayout.HORIZONTAL
+
+            #templatelayout = self.SliderTemplate(ui, **kwargs)
+            control = controltype(ui, **kwargs)
+            self.items.append(control)
+            ui.controls.append(control)
+
+        # action control
+        elif 'func' in kwargs.keys():
+            control = ActionControl(ui, **kwargs)
+            self.items.append(control)
+            ui.controls.append(control)
+        
+        self.layout()
 
 class Ui(object):
 
@@ -117,36 +220,13 @@ class Ui(object):
         self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
         self.control_label_group = uiGroup(10, window, parent=self.control_group)
         
+        self.layout = UiLayout()
+        
         ui_handlers = UiEventHandler(window, self)
         window.push_handlers(ui_handlers)
 
-    def addControl(self, type=None, **kwargs):
-        
-        
-        if type == UiControls.SLIDER:
-            
-            if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
-                if hasattr(kwargs['object'], kwargs['attr']):
-                    attr = getattr(kwargs['object'], kwargs['attr'])
-                    if hasattr(attr, "__getitem__"):  # if attr is subscriptable
-                        for i in range(len(attr)):
-                            slider = SliderControl( self, x=10, y=90+i*20, w=120, h=16, element=i, **kwargs )
-                            self.controls.append( slider )
-                            
-            
-            #self.controls.append( SliderControl( 10, 30, 120, 16, self, **kwargs ) )
-            
-        elif type == UiControls.TOGGLE:
-            toggle = ToggleControl( self, x=10, y=10, w=120, h=16, **kwargs )
-            self.controls.append( toggle )
-            
-        else:
-            action = ActionControl( self, x=10, y=50, w=120, h=16, **kwargs )
-            self.controls.append( action )
-
-
 class UiControl(object):
-    def __init__(self, ui, x=0, y=0, w=100, h=20, object=None, attr='', vmin=0, vmax=100):
+    def __init__(self, ui, x=0, y=0, w=1, h=1, title=''):
         self.x = x
         self.y = y
         self.w = w
@@ -158,15 +238,14 @@ class UiControl(object):
 
         self.ui = ui
         self.vertex_lists = {}
+
+        self.title = '' if title is None else title
         
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
                         group=ui.control_label_group,
                         x=0, y=0,
-                        **UiControls.font_style)
-        
-        self.update_label()
-        self.update_draw()
+                        **UiControls.font_style )
 
     def add_shape_geo(self, shapegeo):
         id = shapegeo['id']
@@ -210,9 +289,9 @@ class UiControl(object):
 
     def reposition(self):
         self.update_label()
-        self.update_draw()
+        self.update()
 
-    def update_draw(self):
+    def update(self):
         pass
 
     def press(self, *args, **kwargs):
@@ -226,47 +305,45 @@ class UiControl(object):
 
     def activate(self):
         self.active = True
-        self.update_draw()
+        self.update()
     def deactivate(self):
         self.active = False
-        self.update_draw()
-    
-    def check_attr(self):
-        if hasattr(self.object, self.attr):
-            return True
-        else:
-            print('invalid attribute %s on object %s' % (self.attr, self.object))
-            return False
+        self.update()
         
 
 class UiAttrControl(UiControl):
     
-    def __init__(self, ui, object=None, attr='', title=None, element=-1, vmin=0, vmax=100, **kwargs):
-        
+    def __init__(self, ui, object=None, attr='', vmin=0, vmax=100, **kwargs):
+        super(UiAttrControl, self).__init__( ui, **kwargs )
+
         self.object = object
         if hasattr(object, attr):
             self.attr = attr
         else:
             raise ValueError("Invalid attribute provided: %s" % attr)
 
-        self.element = element
+        self.len = attr_len(getattr(object, attr))
+        #self.element = element
         self.min = vmin
         self.max = vmax
         
-        if title == None:
+        if self.title == '':
             self.title = self.attr.capitalize()
-        else:
-            self.title = title
-        
-        super(UiAttrControl, self).__init__( ui, **kwargs )
+        self.label.text = self.title        
 
-    def getval(self):
+    def getval(self, sub=None):
         attr = getattr(self.object, self.attr)
         
-        if self.element != -1:
-            return attr[self.element]
+        #if self.element is not None:
+        #    return attr[self.element]
+        #else:
+        #    return attr
+
+        if sub is not None:
+            return attr[sub]
         else:
             return attr
+        #return attr
     
     def limited(self, val, newval):
         if type(val) in ('float', 'int'):
@@ -274,13 +351,21 @@ class UiAttrControl(UiControl):
         else:
             return newval
     
-    def setval(self, newval):
+    def setval(self, newval, sub=None):
         attr = getattr(self.object, self.attr)
         
-        if self.element != -1:
-            attr[self.element] = self.limited( attr[self.element], newval )
+        #if self.element is not None:
+        #    attr[self.element] = self.limited( attr[self.element], newval )
+        #else:
+        #    attr = self.limited(attr, newval)
+
+        #attr = self.limited(attr, newval)
+
+        if sub is not None:
+            attr[sub] = self.limited( attr[sub], newval )
         else:
             attr = self.limited(attr, newval)
+        
         
         setattr(self.object, self.attr, attr)
 
@@ -290,35 +375,44 @@ class UiTextEditControl(UiAttrControl):
     NUM_VALUE_WIDTH = 56
     
     def __init__(self, ui, **kwargs):
+        super(UiTextEditControl, self).__init__( ui, **kwargs)
+
         self.document = pyglet.text.document.UnformattedDocument( '' )
         self.document.set_style(0, len(self.document.text), UiControls.font_style)
 
-        w = kwargs['w']
-        h = kwargs['h']
-        x = kwargs['x']
-        y = kwargs['y']
-
         self.layout = pyglet.text.layout.IncrementalTextLayout(
-                        self.document, w, h, multiline=False,
+                        self.document, 20, 20, multiline=False,
                         batch=ui.batch,
                         group=ui.control_label_group,
                         )
+        '''
+        for i in range(self.len):
+            layout = pyglet.text.layout.IncrementalTextLayout(
+                        self.document, 20, 20, multiline=False,
+                        batch=ui.batch,
+                        group=ui.control_label_group,
+                        )
+            self.layouts.append( layout )
+        '''
         self.caret = pyglet.text.caret.Caret(self.layout)
         self.caret.visible = False
         
-        self.layout.anchor_y = 'baseline'
-        self.layout.x = x + w - self.NUM_VALUE_WIDTH + 4
-        self.layout.y = y + 4
-        
-        
-        super(UiTextEditControl, self).__init__( ui, **kwargs)
-        
-        self.label.width = self.NUM_VALUE_WIDTH
-        self.label.anchor_x = 'right'
-        self.label.x = self.x + self.w - self.NUM_VALUE_WIDTH - 8
-        
         self.text_from_val()
-
+    
+    def update_label(self):
+        super(UiTextEditControl, self).update_label()
+        
+        self.layout.anchor_y = 'baseline'
+        self.layout.anchor_x = 'right'
+        self.layout.x = self.x + self.w - 4
+        self.layout.y = self.y + 4
+        self.layout.width = self.w
+        self.layout.height = self.h
+        
+        self.label.width = self.w
+        self.label.anchor_x = 'left'
+        self.label.x = self.x + 8
+        
     
     def val_from_text(self):
         try:
@@ -328,7 +422,8 @@ class UiTextEditControl(UiAttrControl):
             pass
 
     def text_from_val(self):
-        self.document.text = " %.2f" % self.getval()
+        return
+        #self.document.text = " %.2f" % self.getval()
 
     def textedit_begin(self):
         self.activate()
@@ -337,18 +432,18 @@ class UiTextEditControl(UiAttrControl):
         self.caret.visible = True
         self.caret.mark = 0
         self.caret.position = len(self.document.text)
-        self.update_draw()
+        self.update()
 
     def textedit_update(self, text):
         self.caret.on_text(text)
-        self.update_draw()
+        self.update()
         
     def textedit_end(self):
         self.deactivate()
         self.textediting = False
         self.caret.visible = False
         self.caret.mark = self.caret.position = 0
-        self.update_draw()
+        self.update()
     
     def textedit_confirm(self):
         if not self.textediting: return
@@ -374,7 +469,7 @@ class ToggleControl(UiAttrControl):
         super(ToggleControl, self).update_label()
         self.label.x = self.x + self.CHECKBOX_W*2 + 2
 
-    def update_draw(self):
+    def update(self):
         
         if self.getval():
             col1 = [0.35]*3 + [1.0]
@@ -410,15 +505,18 @@ class ToggleControl(UiAttrControl):
     
     def toggle(self):
         self.setval( not self.getval() )
-        self.update_draw()
+        self.update()
 
 class SliderControl(UiTextEditControl):
+
+    def point_inside_sub(self, x, y):
+        return
 
     def drag_setval(self, dx):
         sensitivity = (self.max - self.min) / 500.0
         self.setval( self.getval() + sensitivity*dx )
 
-    def update_draw(self):
+    def update(self):
         if self.active:
             col2 = [0.3,0.3,0.3, 1.0]
             col1 = [0.4,0.4,0.4, 1.0]
@@ -429,12 +527,13 @@ class SliderControl(UiTextEditControl):
             col1 = [0.6,0.6,0.6, 1.0]
             outline_col = [.2,.2,.2, 1.0]
             coltext = [0,0,0,255]
-    
-        w = self.NUM_VALUE_WIDTH
-        x = self.x + self.w - w
-    
-        self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col1, col2) )
-        self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col) )
+        
+        w = (self.w*0.7) / float(self.len)
+        for i in range(self.len):
+            x = self.x + 0.3*self.w + i*w
+            x = int(x)
+            self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col1, col2, index=i) )
+            self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col, index=i) )
         self.document.set_style(0, len(self.document.text), {'color': coltext})
 
     def press(self, x, y, buttons, modifiers):
@@ -462,18 +561,20 @@ class SliderControl(UiTextEditControl):
             if self.active:
                 self.drag_setval(dx)
                 self.text_from_val()
-                self.update_draw()
+                self.update()
 
 class ActionControl(UiControl):
     
     def __init__(self, ui, object=None, attr='', func=None, **kwargs):
-        
+        super(ActionControl, self).__init__( ui, **kwargs )
+
         if func is None:
             raise ValueError('Invalid function')
         self.func = func
-        self.title = self.func.__name__.capitalize()
+        if self.title == '':
+            self.title = self.func.__name__.capitalize()
+        self.label.text = self.title
         
-        super(ActionControl, self).__init__( ui, **kwargs )
     
     def update_label(self):
         super(ActionControl, self).update_label()
@@ -481,7 +582,7 @@ class ActionControl(UiControl):
         self.label.x = self.x + self.w//2
         
 
-    def update_draw(self):
+    def update(self):
         
         if self.active:
             col1 = [0.35]*3 + [1.0]
@@ -506,3 +607,9 @@ class ActionControl(UiControl):
         if buttons & pyglet.window.mouse.LEFT:
             self.func()
             self.deactivate()
+
+class LabelControl(UiControl):
+    def __init__(self, ui, title='', **kwargs):
+        self.title = title
+        super(LabelControl, self).__init__( ui, **kwargs )
+    

@@ -308,10 +308,14 @@ particles = Particles(2, 3, batch, group=partgroup)
 cube = Cube( scene )
 
 ui = ui2d.Ui(window)
-ui.addControl(ui2d.UiControls.TOGGLE, object=particles, attr="force")
+ui.layout.addControl(ui, object=particles, attr="force")
+ui.layout.addControl(ui, object=camera, attr="fov")
+ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
+ui.layout.addControl(ui, func=myfunc)
+
 #ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
-ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
-ui.addControl(func=myfunc)
+#ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
+#ui.addControl(func=myfunc)
 
 
 # use this rather than decorator, 

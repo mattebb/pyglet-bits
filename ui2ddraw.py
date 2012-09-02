@@ -47,8 +47,8 @@ def round_strip(x, y, w, h, r):
         
         if i == 0:
             # central rect
-            geo += [x, r+y,      r+x+w, r+y]
-            geo += [x, r+y+ch,   r+x+w, r+y+ch]
+            geo += [x, r+y,      x+w, r+y]
+            geo += [x, r+y+ch,   x+w, r+y+ch]
         else:
             # rounded edges
             x2 = cos(theta)*r
@@ -56,10 +56,10 @@ def round_strip(x, y, w, h, r):
             x1 = r - x2
             if i > 0:
                 y0 += ch
-            geo += [x1+x, y0+y,  x2+x+w, y0+y]
+            geo += [x1+x, y0+y,  x2+x+w-r, y0+y]
     return geo
     
-def roundbase(x, y, w, h, r, col1, col2):
+def roundbase(x, y, w, h, r, col1, col2, index=0):
     geo = round_strip(x,y,w,h,r)
     geo = strip_fix(geo, 2)
     
@@ -69,8 +69,8 @@ def roundbase(x, y, w, h, r, col1, col2):
     colors = np.repeat(v, 4).reshape(-1,4)
     colors = fit(colors, np.array(col1), np.array(col2))
     colors = list(colors.flat)
-        
-    return {'id':'roundbase',
+
+    return {'id': 'roundbase%d' % index,
             'len': len(geo)//2,
             'mode':GL_QUAD_STRIP,
             'vertices':geo,
@@ -78,7 +78,7 @@ def roundbase(x, y, w, h, r, col1, col2):
             }
     
 
-def roundoutline(x, y, w, h, r, col):
+def roundoutline(x, y, w, h, r, col, index=0):
     geo = round_strip(x, y, w, h, r)
     garray = np.array( geo ).reshape(-1,2)
 
@@ -95,8 +95,8 @@ def roundoutline(x, y, w, h, r, col):
     colors = col*(len(outline)//2)
     
     outline, colors = aajitter(outline, colors)
-    
-    return {'id':'roundoutline',
+
+    return {'id': 'roundoutline%d' % index,
             'len': len(outline)//2,
             'mode':GL_LINES,
             'vertices':outline,

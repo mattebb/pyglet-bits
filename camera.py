@@ -67,7 +67,7 @@ class CameraHandler(object):
 
     def on_resize(self, width, height):
         self.camera.view_update(width, height)
-        return pyglet.event.EVENT_HANDLED
+        #return pyglet.event.EVENT_HANDLED
 
 
 class Camera(object):
