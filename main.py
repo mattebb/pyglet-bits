@@ -25,7 +25,7 @@ except pyglet.window.NoSuchConfigException:
     # Fall back to no multisampling for old hardware
     window = pyglet.window.Window(resizable=True)
 '''
-window = pyglet.window.Window(500, 300, resizable=True)
+window = pyglet.window.Window(600, 300, resizable=True)
 #window.set_location(2600, 800)
 window.set_location(1600, 800)
 
@@ -311,6 +311,7 @@ ui = ui2d.Ui(window)
 ui.layout.addControl(ui, object=particles, attr="force")
 ui.layout.addControl(ui, object=camera, attr="fov")
 ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
+ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
 ui.layout.addControl(ui, func=myfunc)
 
 #ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)

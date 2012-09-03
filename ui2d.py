@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*- 
+
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
@@ -43,12 +45,15 @@ class UiControls(object):
     TOGGLE = 1
     SLIDER = 2
     ACTION = 3
+
+    ANGLE = 1
     
     font_style = {'color': (0, 0, 0, 255),
              'font_size': 8,
              'font_name': 'Bitstream Vera Sans', 
              }
 
+# XXX convert each control to handle itself?
 class UiEventHandler(object):
     def __init__(self, window, ui):
         self.window = window
@@ -70,22 +75,16 @@ class UiEventHandler(object):
             control.release_outside(x, y, buttons, modifiers)
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        for control in [c for c in self.ui.controls if c.point_inside(x, y) or c.active]:
-            control.drag(x, y, dx, dy, buttons, modifiers)
+        for control in [c for c in self.ui.controls if c.active]:
+            control.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
     
     def on_text(self, text):
-        for control in [c for c in self.ui.controls if c.textediting]:
-            control.textedit_update(text)
+        for control in [c for c in self.ui.controls if c.active]:
+            return control.on_text(text)
     
     def on_key_press(self, symbol, modifiers):
-        if symbol in (key.ENTER, key.RETURN, key.NUM_ENTER):
-            for control in [c for c in self.ui.controls if c.textediting]:
-                control.textedit_confirm()
-            return pyglet.event.EVENT_HANDLED
-        elif symbol == key.ESCAPE:
-            for control in [c for c in self.ui.controls if c.textediting]:
-                control.textedit_cancel()
-            return pyglet.event.EVENT_HANDLED
+        for control in [c for c in self.ui.controls if c.active]:
+            return control.on_key_press(symbol, modifiers)
     
     def on_resize(self, width, height):
         self.ui.layout.reposition(w=int(width*0.35), h=height)
@@ -138,46 +137,11 @@ class UiLayout(object):
             elif self.style == self.HORIZONTAL:
                 item.w = self.w / len(items)
                 x += item.w
-            '''
-            elif self.style == self.CONTROL:
-                label = int(self.w * 0.4)
-                ctrl = (self.w - label) / (len(items)-1)
-                if i == 0:
-                    item.w = label
-                else:
-                    item.w = ctrl
-                x += item.w
-            '''
 
             if type(item) == UiLayout:
                 item.layout(item.items)
             
             item.reposition()
-
-    def SliderTemplate(self, ui, **kwargs):
-        # split multi-element attribute into several ui controls
-
-        ### Clean up usage of ui/controls - should process layout rather than ui.controls
-
-        layout = UiLayout(style=UiLayout.CONTROL)
-        label = LabelControl(ui, title=kwargs['attr'].capitalize())
-        layout.items.append(label)
-
-        attr = getattr( kwargs['object'], kwargs['attr'])
-            
-        
-        if attr_len(attr) is None:
-            control = SliderControl(ui, title='', **kwargs)
-            layout.items.append(control)
-            ui.controls.append(control)
-        else:
-            for i in range(attr_len(attr)):
-                control = SliderControl(ui, title='', element=i, **kwargs)
-                layout.items.append(control)
-                ui.controls.append(control)
-
-        return layout
-
     
     def addControl(self, ui, **kwargs):
         
@@ -187,17 +151,12 @@ class UiLayout(object):
         if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
             attr = getattr( kwargs['object'], kwargs['attr'])
             
-            #alen = attr_len(attr)
-            
             if type(attr) in (float, int, euclid.Point3, euclid.Vector3):
-                controltype = SliderControl
-                #layoutstyle = UiLayout.CONTROL
+                controltype = NumericControl
                 
             elif type(attr) in (bool,):
                 controltype = ToggleControl
-                #layoutstyle = UiLayout.HORIZONTAL
 
-            #templatelayout = self.SliderTemplate(ui, **kwargs)
             control = controltype(ui, **kwargs)
             self.items.append(control)
             ui.controls.append(control)
@@ -234,7 +193,6 @@ class UiControl(object):
         self.type = type
         
         self.active = False
-        self.textediting = False
 
         self.ui = ui
         self.vertex_lists = {}
@@ -298,11 +256,17 @@ class UiControl(object):
         pass
     def release(self, *args, **kwargs):
         pass
-    def drag(self, *args, **kwargs):
+    def on_mouse_drag(self, *args, **kwargs):
         pass
+    def on_text(self, text):
+        pass
+    def on_key_press(self, symbol, modifiers):
+        pass
+    
     def release_outside(self, x, y, buttons, modifiers):
         self.deactivate()
-
+    
+        
     def activate(self):
         self.active = True
         self.update()
@@ -313,7 +277,7 @@ class UiControl(object):
 
 class UiAttrControl(UiControl):
     
-    def __init__(self, ui, object=None, attr='', vmin=0, vmax=100, **kwargs):
+    def __init__(self, ui, object=None, attr='', vmin=0, vmax=100, subtype=None, **kwargs):
         super(UiAttrControl, self).__init__( ui, **kwargs )
 
         self.object = object
@@ -323,9 +287,9 @@ class UiAttrControl(UiControl):
             raise ValueError("Invalid attribute provided: %s" % attr)
 
         self.len = attr_len(getattr(object, attr))
-        #self.element = element
         self.min = vmin
         self.max = vmax
+        self.subtype = subtype
         
         if self.title == '':
             self.title = self.attr.capitalize()
@@ -334,16 +298,10 @@ class UiAttrControl(UiControl):
     def getval(self, sub=None):
         attr = getattr(self.object, self.attr)
         
-        #if self.element is not None:
-        #    return attr[self.element]
-        #else:
-        #    return attr
-
-        if sub is not None:
+        if self.len > 1 and sub is not None:
             return attr[sub]
         else:
             return attr
-        #return attr
     
     def limited(self, val, newval):
         if type(val) in ('float', 'int'):
@@ -353,19 +311,11 @@ class UiAttrControl(UiControl):
     
     def setval(self, newval, sub=None):
         attr = getattr(self.object, self.attr)
-        
-        #if self.element is not None:
-        #    attr[self.element] = self.limited( attr[self.element], newval )
-        #else:
-        #    attr = self.limited(attr, newval)
 
-        #attr = self.limited(attr, newval)
-
-        if sub is not None:
+        if self.len > 1 and sub is not None:
             attr[sub] = self.limited( attr[sub], newval )
         else:
             attr = self.limited(attr, newval)
-        
         
         setattr(self.object, self.attr, attr)
 
@@ -374,40 +324,46 @@ class UiTextEditControl(UiAttrControl):
     
     NUM_VALUE_WIDTH = 56
     
+    LABELSIZE = 0.4
+    
     def __init__(self, ui, **kwargs):
         super(UiTextEditControl, self).__init__( ui, **kwargs)
 
-        self.document = pyglet.text.document.UnformattedDocument( '' )
-        self.document.set_style(0, len(self.document.text), UiControls.font_style)
-
-        self.layout = pyglet.text.layout.IncrementalTextLayout(
-                        self.document, 20, 20, multiline=False,
-                        batch=ui.batch,
-                        group=ui.control_label_group,
-                        )
-        '''
+        self.textediting = None
+        
+        self.carets = []
+        self.documents = []
+        self.layouts = []
         for i in range(self.len):
+            doc = pyglet.text.document.UnformattedDocument( '' )
+            doc.set_style(0, len(doc.text), UiControls.font_style)
+            
             layout = pyglet.text.layout.IncrementalTextLayout(
-                        self.document, 20, 20, multiline=False,
+                        doc, 20, 20, multiline=False,
                         batch=ui.batch,
                         group=ui.control_label_group,
                         )
-            self.layouts.append( layout )
-        '''
-        self.caret = pyglet.text.caret.Caret(self.layout)
-        self.caret.visible = False
+                        
+            caret = pyglet.text.caret.Caret(layout)
+            caret.visible = False
+            
+            self.documents.append(doc)
+            self.layouts.append(layout)
+            self.carets.append(caret)
         
         self.text_from_val()
     
     def update_label(self):
         super(UiTextEditControl, self).update_label()
         
-        self.layout.anchor_y = 'baseline'
-        self.layout.anchor_x = 'right'
-        self.layout.x = self.x + self.w - 4
-        self.layout.y = self.y + 4
-        self.layout.width = self.w
-        self.layout.height = self.h
+        for i, layout in enumerate(self.layouts):
+            w = self.w*(1-self.LABELSIZE) / float(len(self.layouts))
+            layout.anchor_y = 'baseline'
+            layout.anchor_x = 'left'
+            layout.x = int( self.x + self.LABELSIZE*self.w + i*w + 6)
+            layout.y = self.y + 4
+            layout.width = int( w )
+            layout.height = self.h
         
         self.label.width = self.w
         self.label.anchor_x = 'left'
@@ -415,44 +371,52 @@ class UiTextEditControl(UiAttrControl):
         
     
     def val_from_text(self):
-        try:
-            val = float(self.document.text)
-            self.setval(val)
-        except:
-            pass
+        for i, doc in enumerate(self.documents):
+            try:
+                val = float(doc.text)
+                if self.subtype == UiControls.ANGLE:
+                    val = math.radians(val)
+                self.setval(val, sub=i)
+            except:
+                pass
 
     def text_from_val(self):
-        return
-        #self.document.text = " %.2f" % self.getval()
+        for i, doc in enumerate(self.documents):
+            val = self.getval(sub=i)
+            
+            if self.subtype == UiControls.ANGLE:
+                doc.text = u"%.2f°" % math.degrees(val) 
+            else:
+                doc.text = "%.2f" % val
 
-    def textedit_begin(self):
+    def textedit_begin(self, s=0):
         self.activate()
-
-        self.textediting = True
-        self.caret.visible = True
-        self.caret.mark = 0
-        self.caret.position = len(self.document.text)
+        self.textediting = s
+        
+        self.carets[s].visible = True
+        self.carets[s].mark = 0
+        self.carets[s].position = len(self.documents[s].text)
         self.update()
-
+    
     def textedit_update(self, text):
-        self.caret.on_text(text)
-        self.update()
+        self.carets[self.textediting].on_text(text)
         
     def textedit_end(self):
         self.deactivate()
-        self.textediting = False
-        self.caret.visible = False
-        self.caret.mark = self.caret.position = 0
+        self.textediting = None
+        for i in range(self.len):
+            self.carets[i].visible = False
+            self.carets[i].mark = self.carets[i].position = 0
         self.update()
     
     def textedit_confirm(self):
-        if not self.textediting: return
+        if self.textediting is None: return
         self.val_from_text()
         self.text_from_val()
         self.textedit_end()
     
     def textedit_cancel(self):
-        if not self.textediting: return
+        if self.textediting is None: return
         self.text_from_val()
         self.textedit_end()
     
@@ -507,61 +471,97 @@ class ToggleControl(UiAttrControl):
         self.setval( not self.getval() )
         self.update()
 
-class SliderControl(UiTextEditControl):
+class NumericControl(UiTextEditControl):
+    
+    def __init__(self, *args, **kwargs):
+        super(NumericControl, self).__init__(*args, **kwargs)
+        
+        self.sliding = None
 
     def point_inside_sub(self, x, y):
-        return
-
-    def drag_setval(self, dx):
-        sensitivity = (self.max - self.min) / 500.0
-        self.setval( self.getval() + sensitivity*dx )
+        w = (1-self.LABELSIZE)*self.w / float(self.len)
+        offsetx = self.x + self.LABELSIZE*self.w
+        
+        for i in range(self.len):
+            x1 = offsetx + i*w
+            x2 = offsetx + (i+1)*w
+            if x1 < x < x2 and self.y < y < self.y+self.h:
+                return i
+        return None
 
     def update(self):
-        if self.active:
-            col2 = [0.3,0.3,0.3, 1.0]
-            col1 = [0.4,0.4,0.4, 1.0]
-            outline_col = [.2,.2,.2, 1.0]
-            coltext = [255]*4
-        else:
-            col2 = [0.5,0.5,0.5, 1.0]
-            col1 = [0.6,0.6,0.6, 1.0]
-            outline_col = [.2,.2,.2, 1.0]
-            coltext = [0,0,0,255]
         
-        w = (self.w*0.7) / float(self.len)
+        
+        w = (self.w*(1-self.LABELSIZE)) / float(self.len)
         for i in range(self.len):
-            x = self.x + 0.3*self.w + i*w
+            if self.active and (self.textediting == i or self.sliding == i):
+                col2 = [0.3,0.3,0.3, 1.0]
+                col1 = [0.4,0.4,0.4, 1.0]
+                outline_col = [.2,.2,.2, 1.0]
+                coltext = [255]*4
+            else:
+                col2 = [0.5,0.5,0.5, 1.0]
+                col1 = [0.6,0.6,0.6, 1.0]
+                outline_col = [.2,.2,.2, 1.0]
+                coltext = [0,0,0,255]
+
+            x = self.x + self.LABELSIZE*self.w + i*w
             x = int(x)
             self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col1, col2, index=i) )
             self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col, index=i) )
-        self.document.set_style(0, len(self.document.text), {'color': coltext})
+        
+            self.documents[i].set_style(0, len(self.documents[i].text), {'color': coltext})
 
     def press(self, x, y, buttons, modifiers):
-        if self.textediting:
-            self.caret.on_mouse_press(x, y, buttons, modifiers)
-            return pyglet.event.EVENT_HANDLED
-        
-        if buttons & pyglet.window.mouse.LEFT:
-            self.textedit_begin()
-            
-        elif buttons & pyglet.window.mouse.MIDDLE:
-            self.activate()
-    
+        s = self.point_inside_sub(x, y)
+        if s != None:
+            if buttons & pyglet.window.mouse.LEFT:
+                if self.textediting == None:
+                    self.textedit_begin(s=s)
+                elif self.textediting == s:
+                    self.carets[s].on_mouse_press(x, y, buttons, modifiers)
+                    return pyglet.event.EVENT_HANDLED
+                else:
+                    self.textedit_end()
+                
+            elif buttons & pyglet.window.mouse.MIDDLE:
+                self.sliding = s
+                self.activate()
+                
     def release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.MIDDLE:
             self.deactivate()
     
-    def drag(self, x, y, dx, dy, buttons, modifiers):
-        if buttons & pyglet.window.mouse.LEFT:
-            if self.textediting:
-                self.caret.on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+    def on_text(self, text):
+        if self.textediting is not None:
+            self.textedit_update(text)
+    
+    def on_key_press(self, symbol, modifiers):
+        if self.textediting is not None:
+            if symbol in (key.ENTER, key.RETURN, key.NUM_ENTER):
+                self.textedit_confirm()
                 return pyglet.event.EVENT_HANDLED
+            elif symbol == key.ESCAPE:
+                self.textedit_cancel()
+                return pyglet.event.EVENT_HANDLED
+
+    def on_mouse_drag_setval(self, dx):
+        sensitivity = (self.max - self.min) / 500.0
+        self.setval( self.getval(sub=self.sliding) + sensitivity*dx, sub=self.sliding )
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        s = self.point_inside_sub(x, y)
+        if s != None:
+            if buttons & pyglet.window.mouse.LEFT:
+                if self.textediting == s:
+                    self.carets[s].on_mouse_drag(x, y, dx, dy, buttons, modifiers)
+                    return pyglet.event.EVENT_HANDLED
         
         if buttons & pyglet.window.mouse.MIDDLE:
-            if self.active:
-                self.drag_setval(dx)
+            if self.sliding is not None:
+                self.on_mouse_drag_setval(dx)
                 self.text_from_val()
-                self.update()
+                #self.update()
 
 class ActionControl(UiControl):
     
