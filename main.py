@@ -1,3 +1,4 @@
+
 from random import random
 
 import euclid
@@ -12,6 +13,7 @@ import ctypes
 import pyglet
 from pyglet.gl import *
 from pyglet.window import mouse
+from shader import Shader
 
 import camera
 
@@ -53,8 +55,7 @@ def on_draw():
 
     batch.draw()
     
-    for ob in scene.objects:
-        ob.draw()
+    scene.draw()
     
 def setup():
     # One-time GL setup
@@ -126,31 +127,63 @@ class GeometryGroup(pyglet.graphics.Group):
         glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 50)
 
     def unset_state(self):
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_CULL_FACE)
+        
         glDisable(GL_LIGHTING)
         glDisable(GL_LIGHT0)
         glDisable(GL_LIGHT1)
         
 class Scene(object):
+    
+    PAUSED = 0
+    PLAYING = 1
+    
     def __init__(self):
         self.objects = []
+        self.playback = self.PLAYING
+        self.time = 0   # in seconds?
+        
+    def draw(self):
+        for ob in scene.objects:
+            ob.draw(time=self.time)
+    
+    def update(self, dt):
+        if self.playback == self.PLAYING:
+            self.time += dt
+        
+        for ob in self.objects:
+            ob.update(self.time, dt=dt)
 
 class Object3d(object):
     def __init__(self, scene):
         self.batch = pyglet.graphics.Batch()
-        self.group = pyglet.graphics.Group()
+        self.group = GeometryGroup()
         
-        #self.matrix = Matrix4()
         self.translate = Vector3(0,0,0)
         self.rotate= Vector3(0,0,0)
         self.scale= Vector3(1,1,1)
         
         scene.objects.append( self )
+    
+    def update(self, time, dt=0):
+        pass
+    
+    def draw(self, **kwargs):
+        pass
+        
+class Anim(object):
+    def __init__(self, prev_val):
+        self.prev_val = prev_val
+    
+    def setval(self, time):
+        pass
 
 class Cube(Object3d):
     
     def __init__(self, *args, **kwargs):
         super(Cube, self).__init__(*args, **kwargs)
-        
+
         self.vertices = [
                       # Front face
                       -1.0, -1.0,  1.0,
@@ -169,7 +202,8 @@ class Cube(Object3d):
                       -1.0,  1.0,  1.0,
                        1.0,  1.0,  1.0,
                        1.0,  1.0, -1.0,
-                       
+
+         
                       # Bottom face
                       -1.0, -1.0, -1.0,
                        1.0, -1.0, -1.0,
@@ -180,7 +214,7 @@ class Cube(Object3d):
                        1.0, -1.0, -1.0,
                        1.0,  1.0, -1.0,
                        1.0,  1.0,  1.0,
-                       1.0, -1.0,  1.0,
+                      1.0, -1.0,  1.0,
                        
                       # Left face
                       -1.0, -1.0, -1.0,
@@ -198,22 +232,64 @@ class Cube(Object3d):
                       20, 21, 22,     20, 22, 23    # left
                     ]
  
+        idx = np.array(self.indices).reshape(-1,3)
+        verts = np.array(self.vertices).reshape(-1,3)
+    
+        v1 = verts[::4] - verts[1::4]
+        v2 = verts[::4] - verts[3::4]
+        
+        nrm = np.repeat(np.cross(v1, v2), 4, axis=0)
+        
+        # normalise
+        nrm /= ( np.sqrt( nrm[:,0]**2 + nrm[:,1]**2 + nrm[:,2]**2 ).reshape(-1,1) )
+        
+        self.normals = nrm.flat
+        
         self.vertex_list = self.batch.add_indexed(len(self.vertices)//3,
                                              GL_TRIANGLES,
                                              self.group,
                                              self.indices,
                                              ('v3f/static', self.vertices),
+                                             ('n3f/static', self.normals),
                                              )
     
-    def draw(self):
-        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate).scale(*self.scale)
+        vertex_shader = '''
+        uniform float time;
+        varying vec3 normal;
+        void main() {
+            gl_FrontColor = gl_Color;
+            // transform the vertex position
+            gl_Position = gl_ModelViewProjectionMatrix * (gl_Vertex + vec4(0,1,0,0)*sin(time*2.0*gl_Vertex.z));
+            normal = normalize( gl_NormalMatrix * gl_Normal ) ;
+        }
+        '''
+        fragment_shader = '''
+        varying vec3 normal;
+        void main(void) {
+            vec3 L = normalize( vec3( gl_LightSource[1].position ) );
+            gl_FragColor = gl_Color * dot(L, normal);
+            
+        }
         
+        '''
+        self.shader = Shader(vertex_shader, fragment_shader)
+    
+    def draw(self, time=0):
+        self.shader.bind()
+        self.shader.uniformf('time', time)
+        # stupid rotate_euler taking coords out of order!
+        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
+
         glPushMatrix()
         glMultMatrixf( (ctypes.c_float*16)(*m) )
         self.batch.draw()
         glPopMatrix()
+        self.shader.unbind()
         
-    
+    def update(self, time, dt=0):
+        pass
+        #self.translate[0] = math.sin(time)
+        
     def delete(self):
         self.vertex_list.delete()
 
@@ -249,8 +325,6 @@ class Particles(object):
         self.locs += np.array([0,size,0])
         self.vels = (np.random.rand(num, 3)-0.5)
         self.flush()
-
-        #colors = [0.5]*(num*3)
         colors = tuple(np.random.rand(num, 3).flat)
         
         self.vertex_list = batch.add(len(self.vertices)//3, 
@@ -287,7 +361,10 @@ def euler_particles(dt):
 
 pyglet.clock.schedule(euler_particles)
 
+
+
 scene = Scene()
+pyglet.clock.schedule(scene.update)
 
 geogroup = GeometryGroup()
 gridgroup = GridGroup(0)
@@ -307,11 +384,13 @@ axes = ui3d.Axes(0.5, batch, group=axesgroup )
 particles = Particles(2, 3, batch, group=partgroup)
 cube = Cube( scene )
 
+
 ui = ui2d.Ui(window)
 ui.layout.addControl(ui, object=particles, attr="force")
 ui.layout.addControl(ui, object=camera, attr="fov")
 ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
 ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
+ui.layout.addControl(ui, object=cube, attr="scale", vmin=-10, vmax=10)
 ui.layout.addControl(ui, func=myfunc)
 
 #ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
@@ -337,4 +416,4 @@ import pstats
 stats = pstats.Stats('/tmp/pyprof')
 stats.sort_stats('time')
 stats.print_stats()
-'''
+''' 

@@ -1,4 +1,4 @@
-# -*- coding: utf8 -*- 
+﻿
 
 import pyglet
 from pyglet.gl import *
@@ -385,7 +385,7 @@ class UiTextEditControl(UiAttrControl):
             val = self.getval(sub=i)
             
             if self.subtype == UiControls.ANGLE:
-                doc.text = u"%.2f°" % math.degrees(val) 
+                doc.text = u"%.2f\xB0" % math.degrees(val) 
             else:
                 doc.text = "%.2f" % val
 
