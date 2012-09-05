@@ -1,3 +1,7 @@
+import pyglet
+
+# Disable error checking for increased performance
+pyglet.options['debug_gl'] = False
 
 from random import random
 
@@ -10,7 +14,9 @@ import ui3d
 
 import ctypes
 
-import pyglet
+
+
+
 from pyglet.gl import *
 from pyglet.window import mouse
 from shader import Shader
@@ -29,7 +35,7 @@ except pyglet.window.NoSuchConfigException:
 '''
 window = pyglet.window.Window(600, 300, resizable=True)
 #window.set_location(2600, 800)
-window.set_location(1600, 800)
+window.set_location(500, 800)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
@@ -44,30 +50,13 @@ def on_mouse_press(x, y, buttons, modifiers):
 def on_draw():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     
-    (width, height)= window.get_size()
-    camera.view_update(width, height)
-    
-    glLoadIdentity()
-
-    gluLookAt(camera.loc[0], camera.loc[1], camera.loc[2],
-               camera.center[0], camera.center[1], camera.center[2],
-               camera.up[0], camera.up[1], camera.up[2]);
-
-    batch.draw()
-    
     scene.draw()
+
     
 def setup():
     # One-time GL setup
     glClearColor(0.4, 0.4, 0.4, 1)
-
-
-class GridGroup(pyglet.graphics.OrderedGroup):
-    def set_state(self):
-        glColor3f(0.2, 0.2, 0.2)
-        
-    def unset_state(self):
-        pass
+    
 
 class AdditiveGroup(pyglet.graphics.Group):
     def set_state(self):
@@ -78,14 +67,6 @@ class AdditiveGroup(pyglet.graphics.Group):
     def unset_state(self):
         glDisable(GL_BLEND)
 
-class AxesGroup(AdditiveGroup):
-    def set_state(self):
-        super(AxesGroup, self).set_state()
-        
-    def unset_state(self):
-        super(AxesGroup, self).unset_state()
-        pass
-
 class ParticlesGroup(AdditiveGroup):
     def set_state(self):
         super(ParticlesGroup, self).set_state()
@@ -94,59 +75,51 @@ class ParticlesGroup(AdditiveGroup):
     def unset_state(self):
         super(ParticlesGroup, self).unset_state()
         glPointSize(1.0)
-
-class GeometryGroup(pyglet.graphics.Group):
-    def set_state(self):
-        
-        glEnable(GL_DEPTH_TEST)
-        glEnable(GL_CULL_FACE)
-        
-        # Uncomment this line for a wireframe view
-        #glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-
-        # Simple light setup.  On Windows GL_LIGHT0 is enabled by default,
-        # but this is not the case on Linux or Mac, so remember to always 
-        # include it.
-        glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
-        glEnable(GL_LIGHT1)
-
-        # Define a simple function to create ctypes arrays of floats:
-        def vec(*args):
-            return (GLfloat * len(args))(*args)
-
-        glLightfv(GL_LIGHT0, GL_POSITION, vec(.5, .5, 1, 0))
-        glLightfv(GL_LIGHT0, GL_SPECULAR, vec(.5, .5, .5, 1))
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, vec(1, 1, 1, 1))
-        glLightfv(GL_LIGHT1, GL_POSITION, vec(1, 0, .5, 0))
-        glLightfv(GL_LIGHT1, GL_DIFFUSE, vec(.5, .5, .5, 1))
-        glLightfv(GL_LIGHT1, GL_SPECULAR, vec(1, 1, 1, 1))
-
-        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, vec(0.3, 0.3, 0.3, 1))
-        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, vec(1, 1, 1, 1))
-        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 50)
-
-    def unset_state(self):
-        glDisable(GL_DEPTH_TEST)
-        glDisable(GL_CULL_FACE)
-        
-        glDisable(GL_LIGHTING)
-        glDisable(GL_LIGHT0)
-        glDisable(GL_LIGHT1)
         
 class Scene(object):
     
     PAUSED = 0
     PLAYING = 1
     
+    vertex_shader = '''
+    uniform mat4 modelview;
+    uniform mat4 projection;
+    void main() {
+        gl_FrontColor = gl_Color;
+        
+        vec4 modelSpacePos = modelview * gl_Vertex;
+        gl_Position = projection * modelSpacePos;
+    }
+    '''
+
     def __init__(self):
         self.objects = []
+        self.camera = None
+        
         self.playback = self.PLAYING
         self.time = 0   # in seconds?
         
+        self.ui3d_shader = Shader(self.vertex_shader)
+        
     def draw(self):
+        # 3D Geometry
         for ob in scene.objects:
-            ob.draw(time=self.time)
+            ob.draw(time=self.time, camera=camera)
+
+        # 3D UI elements
+        glEnable(GL_LINE_SMOOTH)
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glHint (GL_LINE_SMOOTH_HINT, GL_NICEST);
+        
+        self.ui3d_shader.bind()
+        self.ui3d_shader.uniform_matrixf('modelview', self.camera.matrix)
+        self.ui3d_shader.uniform_matrixf('projection', self.camera.persp_matrix)
+        batch.draw()
+        self.ui3d_shader.unbind()
+
+        glDisable(GL_LINE_SMOOTH)
+
     
     def update(self, dt):
         if self.playback == self.PLAYING:
@@ -158,7 +131,6 @@ class Scene(object):
 class Object3d(object):
     def __init__(self, scene):
         self.batch = pyglet.graphics.Batch()
-        self.group = GeometryGroup()
         
         self.translate = Vector3(0,0,0)
         self.rotate= Vector3(0,0,0)
@@ -181,6 +153,35 @@ class Anim(object):
 
 class Cube(Object3d):
     
+    vertex_shader = '''
+        uniform float time;
+        uniform mat4 modelview;
+        uniform mat4 projection;
+        varying vec3 normal;
+        void main() {
+            gl_FrontColor = gl_Color;
+            
+            vec3 P = gl_Vertex.xyz; 
+            // transform the vertex position
+            vec4 v = (vec4(P,1.0) + vec4(0,1,0,0)*sin(time*2.0*gl_Vertex.z));
+            vec4 modelSpacePos = modelview * v;
+            gl_Position = projection * modelSpacePos;
+            
+            vec3 N = gl_Normal.xyz; 
+            normal = normalize(modelview * vec4(N, 0.0)).xyz;
+
+        }
+        '''
+    fragment_shader = '''
+        varying vec3 normal;
+        void main(void) {
+            vec3 L = normalize( vec3( gl_LightSource[1].position ) );
+            gl_FragColor = gl_Color * dot(L, normal);
+            
+        }
+        
+        '''
+
     def __init__(self, *args, **kwargs):
         super(Cube, self).__init__(*args, **kwargs)
 
@@ -247,46 +248,30 @@ class Cube(Object3d):
         
         self.vertex_list = self.batch.add_indexed(len(self.vertices)//3,
                                              GL_TRIANGLES,
-                                             self.group,
+                                             None,
                                              self.indices,
                                              ('v3f/static', self.vertices),
                                              ('n3f/static', self.normals),
                                              )
+        self.shader = Shader(self.vertex_shader, self.fragment_shader)
     
-        vertex_shader = '''
-        uniform float time;
-        varying vec3 normal;
-        void main() {
-            gl_FrontColor = gl_Color;
-            // transform the vertex position
-            gl_Position = gl_ModelViewProjectionMatrix * (gl_Vertex + vec4(0,1,0,0)*sin(time*2.0*gl_Vertex.z));
-            normal = normalize( gl_NormalMatrix * gl_Normal ) ;
-        }
-        '''
-        fragment_shader = '''
-        varying vec3 normal;
-        void main(void) {
-            vec3 L = normalize( vec3( gl_LightSource[1].position ) );
-            gl_FragColor = gl_Color * dot(L, normal);
-            
-        }
-        
-        '''
-        self.shader = Shader(vertex_shader, fragment_shader)
-    
-    def draw(self, time=0):
-        self.shader.bind()
-        self.shader.uniformf('time', time)
+    def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
         m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
 
-        glPushMatrix()
-        glMultMatrixf( (ctypes.c_float*16)(*m) )
+        self.shader.bind()
+        self.shader.uniformf('time', time)
+        self.shader.uniform_matrixf('modelview', camera.matrix * m)
+        self.shader.uniform_matrixf('projection', camera.persp_matrix)
+        
         self.batch.draw()
-        glPopMatrix()
         self.shader.unbind()
         
+        
     def update(self, time, dt=0):
+        self.translate[0] += dt*random()
+
+        self.rotate[0] += dt*random()
         pass
         #self.translate[0] = math.sin(time)
         
@@ -358,7 +343,6 @@ def euler_particles(dt):
     
     particles.flush()
 
-
 pyglet.clock.schedule(euler_particles)
 
 
@@ -366,31 +350,37 @@ pyglet.clock.schedule(euler_particles)
 scene = Scene()
 pyglet.clock.schedule(scene.update)
 
-geogroup = GeometryGroup()
-gridgroup = GridGroup(0)
-axesgroup = AxesGroup()
+
 partgroup = ParticlesGroup()
 batch = pyglet.graphics.Batch()
 
+
 camera = camera.Camera(window)
+scene.camera = camera
 
 setup()
 
 def myfunc():
-    return ui3d.Grid(2, 6, batch, group=gridgroup )
+    return ui3d.Grid(2, 6, batch)
 
-#grid = ui3d.Grid(2, 6, batch, group=gridgroup )
-axes = ui3d.Axes(0.5, batch, group=axesgroup )
+grid = ui3d.Grid(2, 6, batch )
+axes = ui3d.Axes(0.5, batch )
 particles = Particles(2, 3, batch, group=partgroup)
-cube = Cube( scene )
+
+for i in range(100):
+    s = 20
+    cube = Cube( scene )
+    cube.translate = Point3((random()-0.5)*s, (random()-0.5)*s, (random()-0.5)*s)
+    cube.rotate = Vector3(random(), random(), random())
+    cube.scale = Vector3(random()*0.5, random()*0.5, random()*0.5)
 
 
 ui = ui2d.Ui(window)
 ui.layout.addControl(ui, object=particles, attr="force")
 ui.layout.addControl(ui, object=camera, attr="fov")
-ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
-ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
-ui.layout.addControl(ui, object=cube, attr="scale", vmin=-10, vmax=10)
+#ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
+#ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
+#ui.layout.addControl(ui, object=cube, attr="scale", vmin=-10, vmax=10)
 ui.layout.addControl(ui, func=myfunc)
 
 #ui.addControl(ui2d.UiControls.SLIDER, object=camera, attr="fov", vmin=5, vmax=120)
@@ -405,8 +395,6 @@ window.push_handlers(on_draw)
 
 
 
-
-
 pyglet.app.run()
 '''
 
@@ -414,6 +402,12 @@ import cProfile
 cProfile.run('pyglet.app.run()', '/tmp/pyprof')
 import pstats
 stats = pstats.Stats('/tmp/pyprof')
-stats.sort_stats('time')
-stats.print_stats()
-''' 
+stats.strip_dirs().sort_stats('time')
+stats.print_stats(25)
+
+print 'INCOMING CALLERS:'
+stats.print_callers(25)
+
+print 'OUTGOING CALLEES:'
+stats.print_callees(25)
+'''

@@ -3,7 +3,7 @@ import math
 from math import pi, sin, cos
 
 import euclid
-from euclid import Vector3, Point3
+from euclid import Vector3, Point3, Matrix4
 
 import pyglet
 from pyglet.window import key
@@ -63,6 +63,8 @@ class CameraHandler(object):
                 self.camera.center[2] += sin(phi) * s * dx
                 self.camera.update_location()
             
+            winsize = self.window.get_size()
+            self.camera.view_update(winsize[0], winsize[1])
             return pyglet.event.EVENT_HANDLED
 
     def on_resize(self, width, height):
@@ -86,7 +88,10 @@ class Camera(object):
         self.loc = Vector3(0,0,0)
         self.update_location()
         
-        self.needs_update = False
+        self.matrix = Matrix4()
+        self.persp_matrix = Matrix4()
+        
+        self.needs_update = True
 
         self.window = window
         handlers = CameraHandler(window, self)
@@ -136,7 +141,14 @@ class Camera(object):
     
     def view_update(self, width, height):
         glViewport(0, 0, width, height)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(self.fov, width / float(height), self.clipnear, self.clipfar)
-        glMatrixMode(GL_MODELVIEW)
+        
+        # match openGL format
+        self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
+        self.matrix = Matrix4.new_look_at(self.loc, self.center, self.up)
+        self.matrix.d = 0
+        self.matrix.h = 0
+        self.matrix.l = 0
+        self.matrix.o = -self.radius
+        self.matrix.transpose()
+        
+        

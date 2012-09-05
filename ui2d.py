@@ -21,11 +21,11 @@ class uiGroup(pyglet.graphics.OrderedGroup):
         
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
-        #glTranslatef(0.375, 0.375, 0.0)
         
-        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST)
 
     def unset_state(self):
+        glEnable(GL_DEPTH_TEST)
         pass
 
 class uiBlendGroup(uiGroup):
@@ -61,6 +61,7 @@ class UiEventHandler(object):
 
     def on_draw(self):
         self.ui.batch.draw()
+        self.ui.fps_display.draw()
 
     def on_mouse_press(self, x, y, buttons, modifiers):
         for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
@@ -179,6 +180,7 @@ class Ui(object):
         self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
         self.control_label_group = uiGroup(10, window, parent=self.control_group)
         
+        self.fps_display = pyglet.clock.ClockDisplay()
         self.layout = UiLayout()
         
         ui_handlers = UiEventHandler(window, self)

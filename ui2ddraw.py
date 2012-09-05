@@ -8,15 +8,14 @@ import numpy as np
 
 np.set_printoptions(precision=3,suppress=True)
 
-def aajitter(seq, colors):
+def aajitter(seq, colors, sc=1.0):
     samples = 16
-    sp = 1.0
-
+    
     ar = np.array(seq).reshape(-1,2)
     jitter_ar = ar.copy()
     
     for i in range(1, samples):
-        j = ar + np.array([sp*random(), sp*random()])
+        j = ar + np.array([sc*random(), sc*random()])
         jitter_ar = np.concatenate((jitter_ar, j))
 
     colors = np.array(colors).reshape(-1,4)

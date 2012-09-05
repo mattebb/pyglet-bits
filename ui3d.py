@@ -54,10 +54,17 @@ class Grid(object):
             vertices += [-radius, 0, zc]
             vertices += [radius, 0, zc]
     
+        colors = [0.3,0.3,0.3,1.0]*(len(vertices)//3)
+
+
+        #from ui2ddraw import aajitter
+        #vertices, colors = aajitter(vertices, colors, sc=0.005)
+
         self.vertex_list = batch.add(len(vertices)//3, 
                                              GL_LINES,
                                              group,
-                                             ('v3f/static', vertices))
+                                             ('v3f/static', vertices),
+                                             ('c4f/static', colors))
        
     def delete(self):
         self.vertex_list.delete()
