@@ -35,7 +35,7 @@ except pyglet.window.NoSuchConfigException:
 '''
 window = pyglet.window.Window(600, 300, resizable=True)
 #window.set_location(2600, 800)
-window.set_location(500, 800)
+window.set_location(1200, 800)
 
 @window.event
 def on_mouse_press(x, y, buttons, modifiers):
@@ -44,18 +44,11 @@ def on_mouse_press(x, y, buttons, modifiers):
         click, dir = camera.project_ray(x, y)
         #cross = Ray(click, dir, 20)
         particles.intersect(click, dir)
-
-
-# @window.event
-def on_draw():
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    
-    scene.draw()
-
     
 def setup():
     # One-time GL setup
     glClearColor(0.4, 0.4, 0.4, 1)
+    
     
 
 class AdditiveGroup(pyglet.graphics.Group):
@@ -101,7 +94,9 @@ class Scene(object):
         
         self.ui3d_shader = Shader(self.vertex_shader)
         
-    def draw(self):
+    def on_draw(self):
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        
         # 3D Geometry
         for ob in scene.objects:
             ob.draw(time=self.time, camera=camera)
@@ -269,11 +264,7 @@ class Cube(Object3d):
         
         
     def update(self, time, dt=0):
-        self.translate[0] += dt*random()
-
-        self.rotate[0] += dt*random()
-        pass
-        #self.translate[0] = math.sin(time)
+        return
         
     def delete(self):
         self.vertex_list.delete()
@@ -367,12 +358,13 @@ grid = ui3d.Grid(2, 6, batch )
 axes = ui3d.Axes(0.5, batch )
 particles = Particles(2, 3, batch, group=partgroup)
 
-for i in range(100):
-    s = 20
+
+for i in range(30):
+    s = 7
     cube = Cube( scene )
     cube.translate = Point3((random()-0.5)*s, (random()-0.5)*s, (random()-0.5)*s)
     cube.rotate = Vector3(random(), random(), random())
-    cube.scale = Vector3(random()*0.5, random()*0.5, random()*0.5)
+    cube.scale = Vector3(random()*0.3, random()*0.3, random()*0.3)
 
 
 ui = ui2d.Ui(window)
@@ -390,7 +382,9 @@ ui.layout.addControl(ui, func=myfunc)
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
-window.push_handlers(on_draw)
+#window.push_handlers(on_draw)
+window.push_handlers(scene)
+
 
 
 

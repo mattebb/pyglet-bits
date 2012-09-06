@@ -16,7 +16,6 @@ class CameraHandler(object):
     def __init__(self, window, camera):
         self.camera = camera
         self.window = window
-
         
         window.push_handlers(keys)
 
@@ -40,28 +39,34 @@ class CameraHandler(object):
         elif keys[key.SPACE]:
             if buttons & mouse.LEFT:
                 s = 0.0075
-                self.camera.phi += s * dx
-                self.camera.theta -= s * dy
-                if self.camera.theta > pi:
-                    self.camera.theta = pi
-                elif self.camera.theta < 0.0001:
-                    self.camera.theta = 0.0001
-                self.camera.update_location()
+
+                m = self.camera.matrix
+                loc = Point3(*m[12:14]) # - self.camera.center   # translation part
+                xaxis = Vector3(m[0], m[4], m[8])
+                
+                m.translate(*(-loc))
+                m.rotate_axis(s*dx,Vector3(0,1,0)).rotate_axis(s*dy, xaxis)
+                m.translate(*(loc))
+
                 
             if buttons & mouse.RIGHT:
-                self.camera.radius += 0.01 * -dx
-                if self.camera.radius < 0:
-                    self.camera.radius = 0
-                self.camera.update_location()
+                s = 0.01
+                m = self.camera.matrix
+                zaxis = Vector3(m[2], m[6], m[10])
+                m.translate(*(zaxis*s*dx))
+                self.camera.center -= zaxis*s*dx
+
             
             if buttons & mouse.MIDDLE:
                 s = 0.01
-                self.camera.center[1] += s * dy
+                m = self.camera.matrix
+                xaxis = Vector3(m[0], m[4], m[8])
+                yaxis = Vector3(m[1], m[5], m[9])
+                trans = Matrix4.new_translate(*(xaxis*s*dx)).translate(*(yaxis*s*-dy))
                 
-                phi = self.camera.phi + pi*0.5
-                self.camera.center[0] += cos(phi) * s * dx
-                self.camera.center[2] += sin(phi) * s * dx
-                self.camera.update_location()
+                m *= trans
+                self.camera.center -= xaxis*s*dx + yaxis*s*-dy
+
             
             winsize = self.window.get_size()
             self.camera.view_update(winsize[0], winsize[1])
@@ -77,17 +82,13 @@ class Camera(object):
     def __init__(self, window):
         self.phi = pi / 2.0
         self.theta = pi * 0.4
-        self.radius = 5.
+        self.radius = 10.
         self.fov = 50.
         self.clipnear = 0.1
         self.clipfar = 1000
         
         self.center = Vector3(0,0,0)
-        self.up = Vector3(0,1,0)
 
-        self.loc = Vector3(0,0,0)
-        self.update_location()
-        
         self.matrix = Matrix4()
         self.persp_matrix = Matrix4()
         
@@ -96,13 +97,9 @@ class Camera(object):
         self.window = window
         handlers = CameraHandler(window, self)
         window.push_handlers(handlers)
-
-    def update_location(self):
-        eyeX = self.radius * cos(self.phi) * sin(self.theta) + self.center[0]
-        eyeY = self.radius * cos(self.theta)                 + self.center[1]
-        eyeZ = self.radius * sin(self.phi) * sin(self.theta) + self.center[2]
-        self.loc = Vector3(eyeX, eyeY, eyeZ)
         
+        self.matrix = Matrix4().new_translate(0,-0.5,-6)
+
     def project_ray(self, px, py):
         cam_view = (self.center - self.loc).normalize()
         
@@ -144,11 +141,6 @@ class Camera(object):
         
         # match openGL format
         self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
-        self.matrix = Matrix4.new_look_at(self.loc, self.center, self.up)
-        self.matrix.d = 0
-        self.matrix.h = 0
-        self.matrix.l = 0
-        self.matrix.o = -self.radius
-        self.matrix.transpose()
+
         
         
