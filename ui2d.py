@@ -1,5 +1,5 @@
 ﻿
-
+import parameter
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
@@ -144,6 +144,19 @@ class UiLayout(object):
             
             item.reposition()
     
+    def addParameter(self, ui, param):
+        if param.type in (float, int, euclid.Point3, euclid.Vector3):
+            controltype = NumericControl
+            
+        if param.type in (bool,):
+            controltype = ToggleControl
+
+        control = controltype(ui, param=param)
+        self.items.append(control)
+        ui.controls.append(control)
+
+        self.layout()
+
     def addControl(self, ui, **kwargs):
         
         # detect ui control type and length
@@ -279,27 +292,37 @@ class UiControl(object):
 
 class UiAttrControl(UiControl):
     
-    def __init__(self, ui, object=None, attr='', vmin=0, vmax=100, subtype=None, **kwargs):
+    def __init__(self, ui, param=None, object=None, attr='', vmin=0, vmax=100, subtype=None, **kwargs):
         super(UiAttrControl, self).__init__( ui, **kwargs )
+        
+        self.param = self.object = None
+        self.attr = ''
 
-        self.object = object
-        if hasattr(object, attr):
+        if param is not None:
+            self.param = param
+            self.len = param.len
+            self.title = param.title if self.title == '' else self.title
+        elif hasattr(object, attr):
+            self.object = object
             self.attr = attr
+            self.len = attr_len(getattr(object, attr))
+            self.title = self.attr.capitalize() if self.title == '' else self.title
         else:
             raise ValueError("Invalid attribute provided: %s" % attr)
 
-        self.len = attr_len(getattr(object, attr))
         self.min = vmin
         self.max = vmax
         self.subtype = subtype
         
-        if self.title == '':
-            self.title = self.attr.capitalize()
         self.label.text = self.title        
 
     def getval(self, sub=None):
+        # Parameter interface
+        if self.param is not None:
+            return self.param.getval(sub=sub)
+
+        # or modify attribute values directly
         attr = getattr(self.object, self.attr)
-        
         if self.len > 1 and sub is not None:
             return attr[sub]
         else:
@@ -312,8 +335,12 @@ class UiAttrControl(UiControl):
             return newval
     
     def setval(self, newval, sub=None):
-        attr = getattr(self.object, self.attr)
+        # Parameter interface
+        if self.param is not None:
+            return self.param.setval(newval, sub=sub)
 
+        # or modify attribute values directly
+        attr = getattr(self.object, self.attr)
         if self.len > 1 and sub is not None:
             attr[sub] = self.limited( attr[sub], newval )
         else:

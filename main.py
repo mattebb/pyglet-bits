@@ -1,7 +1,7 @@
 import pyglet
 
 # Disable error checking for increased performance
-pyglet.options['debug_gl'] = False
+pyglet.options['debug_gl'] = True
 
 from random import random
 
@@ -15,7 +15,7 @@ import ui3d
 import ctypes
 
 
-
+from parameter import Parameter
 
 from pyglet.gl import *
 from pyglet.window import mouse
@@ -124,6 +124,63 @@ class Scene(object):
             ob.update(self.time, dt=dt)
 
 class Object3d(object):
+    vertex_shader = '''
+    uniform mat4 modelview;
+    uniform mat4 projection;
+    varying vec3 normal;
+    void main() {
+        gl_FrontColor = gl_Color;
+        
+        vec4 modelSpacePos = modelview * gl_Vertex;
+        gl_Position = projection * modelSpacePos;
+
+        vec3 N = gl_Normal.xyz; 
+        normal = normalize(modelview * vec4(N, 0.0)).xyz;
+    }
+    '''
+
+    fragment_shader = '''
+    varying vec3 normal;
+    void main(void) {
+        vec3 L = normalize( vec3( gl_LightSource[1].position ) );
+        gl_FragColor = gl_Color * dot(L, normal);
+    }
+    '''
+
+    def transform_verts(self, verts, matrix):
+        ''' Transform a numpy array of vertex positions by a matrix '''
+        # rotate 90 degrees to Y up, from blender
+        mat = np.matrix( matrix[:] ).reshape(4,4)
+        # change verts to vec4
+        verts = np.insert(verts, 3, 1.0, axis=1)
+        # multiply and transpose back to array of vec3
+        verts = np.dot(mat.T, verts.T)[:-1].T
+        return verts
+
+    def calculate_normals(self, verts, idx):
+        v1 = verts[idx[::3]]
+        v1_indices = idx[:,0]
+        v2_indices = idx[:,1]
+        v3_indices = idx[:,2]
+
+        # take first 2 edges of each tri
+        edge1 = verts[v1_indices] - verts[v2_indices]
+        edge2 = verts[v1_indices] - verts[v3_indices]
+
+        # generate normal for each face
+        fnrm = np.cross(edge1, edge2)
+        # normalise
+        fnrm /= ( np.sqrt( fnrm[:,0]**2 + fnrm[:,1]**2 + fnrm[:,2]**2 ).reshape(-1,1) )
+
+        # crazy generator exp to make smooth normals by
+        # summing normals of faces adjacent to each vertex
+        vn = np.array([ sum(fnrm[j] for j, fi in enumerate(idx) if i in fi) for i in range(len(verts)) ])
+
+        # normalise vertex normals
+        vn /= ( np.sqrt( vn[:,0]**2 + vn[:,1]**2 + vn[:,2]**2 ).reshape(-1,1) )
+
+        return vn
+
     def __init__(self, scene):
         self.batch = pyglet.graphics.Batch()
         
@@ -131,6 +188,8 @@ class Object3d(object):
         self.rotate= Vector3(0,0,0)
         self.scale= Vector3(1,1,1)
         
+        self.shader = Shader(self.vertex_shader, self.fragment_shader)
+
         scene.objects.append( self )
     
     def update(self, time, dt=0):
@@ -146,36 +205,73 @@ class Anim(object):
     def setval(self, time):
         pass
 
+class Raw(Object3d):
+    def __init__(self, *args, **kwargs):
+        super(Raw, self).__init__(*args, **kwargs)
+
+        import import_raw
+        self.vertices, self.indices = import_raw.readMeshRAW('trim.raw')
+        
+        verts = np.array(self.vertices).reshape(-1,3)
+        idx = np.array(self.indices).reshape(-1,3)
+
+        verts = self.transform_verts(verts, Matrix4.new_rotate_axis(math.pi*-0.5, Vector3(1,0,0)) )
+        vn = self.calculate_normals(verts, idx)
+        
+        self.vertices = tuple(verts.flat)
+        self.normals = tuple(vn.flat)
+        self.indices = tuple(idx.flat)
+        self.vertex_list = self.batch.add_indexed(len(self.vertices)//3,
+                                             GL_TRIANGLES,
+                                             None,
+                                             self.indices,
+                                             ('v3f/static', self.vertices),
+                                             ('n3f/static', self.normals)
+                                             )
+
+
+    def draw(self, time=0, camera=None):
+        # stupid rotate_euler taking coords out of order!
+        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
+
+        self.shader.bind()
+        self.shader.uniform_matrixf('modelview', camera.matrix * m)
+        self.shader.uniform_matrixf('projection', camera.persp_matrix)
+        
+        self.batch.draw()
+        self.shader.unbind()
+
+
 class Cube(Object3d):
     
     vertex_shader = '''
-        uniform float time;
-        uniform mat4 modelview;
-        uniform mat4 projection;
-        varying vec3 normal;
-        void main() {
-            gl_FrontColor = gl_Color;
-            
-            vec3 P = gl_Vertex.xyz; 
-            // transform the vertex position
-            vec4 v = (vec4(P,1.0) + vec4(0,1,0,0)*sin(time*2.0*gl_Vertex.z));
-            vec4 modelSpacePos = modelview * v;
-            gl_Position = projection * modelSpacePos;
-            
-            vec3 N = gl_Normal.xyz; 
-            normal = normalize(modelview * vec4(N, 0.0)).xyz;
-
-        }
-        '''
-    fragment_shader = '''
-        varying vec3 normal;
-        void main(void) {
-            vec3 L = normalize( vec3( gl_LightSource[1].position ) );
-            gl_FragColor = gl_Color * dot(L, normal);
-            
-        }
+    uniform float time;
+    uniform mat4 modelview;
+    uniform mat4 projection;
+    varying vec3 normal;
+    void main() {
+        gl_FrontColor = gl_Color;
         
-        '''
+        vec3 P = gl_Vertex.xyz; 
+        // transform the vertex position
+        vec4 v = (vec4(P,1.0) + vec4(0,1,0,0)*sin(time*2.0*gl_Vertex.z));
+        vec4 modelSpacePos = modelview * v;
+        gl_Position = projection * modelSpacePos;
+        
+        vec3 N = gl_Normal.xyz; 
+        normal = normalize(modelview * vec4(N, 0.0)).xyz;
+
+    }
+    '''
+    fragment_shader = '''
+    varying vec3 normal;
+    void main(void) {
+        vec3 L = normalize( vec3( gl_LightSource[1].position ) );
+        gl_FragColor = gl_Color * dot(L, normal);
+        
+    }
+    
+    '''
 
     def __init__(self, *args, **kwargs):
         super(Cube, self).__init__(*args, **kwargs)
@@ -230,10 +326,11 @@ class Cube(Object3d):
  
         idx = np.array(self.indices).reshape(-1,3)
         verts = np.array(self.vertices).reshape(-1,3)
-    
+
         v1 = verts[::4] - verts[1::4]
         v2 = verts[::4] - verts[3::4]
         
+
         nrm = np.repeat(np.cross(v1, v2), 4, axis=0)
         
         # normalise
@@ -248,8 +345,7 @@ class Cube(Object3d):
                                              ('v3f/static', self.vertices),
                                              ('n3f/static', self.normals),
                                              )
-        self.shader = Shader(self.vertex_shader, self.fragment_shader)
-    
+            
     def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
         m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
@@ -352,14 +448,15 @@ scene.camera = camera
 setup()
 
 def myfunc():
-    return ui3d.Grid(2, 6, batch)
+    return Raw(scene)
+    #return ui3d.Grid(2, 6, batch)
 
 grid = ui3d.Grid(2, 6, batch )
 axes = ui3d.Axes(0.5, batch )
 particles = Particles(2, 3, batch, group=partgroup)
 
 
-for i in range(30):
+for i in range(0):
     s = 7
     cube = Cube( scene )
     cube.translate = Point3((random()-0.5)*s, (random()-0.5)*s, (random()-0.5)*s)
@@ -379,6 +476,16 @@ ui.layout.addControl(ui, func=myfunc)
 #ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.addControl(func=myfunc)
 
+p = Parameter(object=camera, attr="fov", update=camera.update_projection)
+ui.layout.addParameter(ui, p)
+
+# cube = Cube( scene )
+# p = Parameter(object=cube, attr="translate")
+# ui.layout.addParameter(ui, p)
+
+#cube = Cube( scene )
+rawob = Raw(scene)
+
 
 # use this rather than decorator, 
 # so that ui drawing is higher in the stack
@@ -388,20 +495,18 @@ window.push_handlers(scene)
 
 
 
-
 pyglet.app.run()
-'''
 
-import cProfile
-cProfile.run('pyglet.app.run()', '/tmp/pyprof')
-import pstats
-stats = pstats.Stats('/tmp/pyprof')
-stats.strip_dirs().sort_stats('time')
-stats.print_stats(25)
 
-print 'INCOMING CALLERS:'
-stats.print_callers(25)
+# import cProfile
+# cProfile.run('pyglet.app.run()', '/tmp/pyprof')
+# import pstats
+# stats = pstats.Stats('/tmp/pyprof')
+# stats.sort_stats('time')
+# stats.print_stats(25)
 
-print 'OUTGOING CALLEES:'
-stats.print_callees(25)
-'''
+# print 'INCOMING CALLERS:'
+# stats.print_callers(25)
+
+# print 'OUTGOING CALLEES:'
+# stats.print_callees(25)

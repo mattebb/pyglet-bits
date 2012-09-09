@@ -45,7 +45,7 @@ class CameraHandler(object):
                 xaxis = Vector3(m[0], m[4], m[8])
                 
                 m.translate(*(-loc))
-                m.rotate_axis(s*dx,Vector3(0,1,0)).rotate_axis(s*dy, xaxis)
+                m.rotate_axis(s*dy, xaxis).rotate_axis(s*dx, Vector3(0,1,0))
                 m.translate(*(loc))
 
                 
@@ -78,6 +78,11 @@ class CameraHandler(object):
 
 
 class Camera(object):
+
+    def update_projection(self):
+        width, height = self.window.get_size()
+        self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
+
 
     def __init__(self, window):
         self.phi = pi / 2.0
