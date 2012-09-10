@@ -455,12 +455,12 @@ class UiTextEditControl(UiAttrControl):
 
 class ToggleControl(UiAttrControl):
     
-    CHECKBOX_W = 7
-    CHECKBOX_H = 9
+    CHECKBOX_W = 10
+    CHECKBOX_H = 10
     
     def update_label(self):
         super(ToggleControl, self).update_label()
-        self.label.x = self.x + self.CHECKBOX_W*2 + 2
+        self.label.x = self.x + self.CHECKBOX_W + 8
 
     def update(self):
         

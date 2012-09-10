@@ -63,9 +63,13 @@ def roundbase(x, y, w, h, r, col1, col2, index=0):
     geo = strip_fix(geo, 2)
     
     # generate uv v coord from vertex y height
-    v = [ (gy-y)/h for gy in geo[1::2] ]    # vertex y = slice to find odd list items
+    v = np.array(geo).reshape(-1,2)[:,1]
     
+    # convert to color values, scaled 0 to 1
     colors = np.repeat(v, 4).reshape(-1,4)
+    colors = (colors - np.min(colors)) / (np.max(colors) - np.min(colors))
+
+    # map target gradient colours to 0,1
     colors = fit(colors, np.array(col1), np.array(col2))
     colors = list(colors.flat)
 
@@ -104,9 +108,9 @@ def roundoutline(x, y, w, h, r, col, index=0):
 
 def checkmark(x, y, w, h, col):
 
-    checkmark =   [ x+w*0.3, y+h*0.5,
-                    x+w*0.7, y+h*0.2,
-                    x+w*0.7, y+h*0.2,
+    checkmark =   [ x+w*0.2, y+h*0.5,
+                    x+w*0.5, y+h*0.2,
+                    x+w*0.5, y+h*0.2,
                     x+w*1.3, y+h+0.3*h ]
 
     colors = col*(len(checkmark)//2)
