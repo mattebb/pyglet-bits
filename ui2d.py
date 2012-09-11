@@ -145,13 +145,13 @@ class UiLayout(object):
             item.reposition()
     
     def addParameter(self, ui, param):
-        if param.type in (float, int, euclid.Point3, euclid.Vector3):
+        if param.type in ui.control_types['numeric']:
             controltype = NumericControl
             
-        if param.type in (bool,):
+        if param.type in ui.control_types['toggle']:
             controltype = ToggleControl
 
-        control = controltype(ui, param=param)
+        control = controltype(ui, param=param, vmin=param.min, vmax=param.max)
         self.items.append(control)
         ui.controls.append(control)
 
@@ -164,11 +164,11 @@ class UiLayout(object):
         # attribute controls
         if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
             attr = getattr( kwargs['object'], kwargs['attr'])
-            
-            if type(attr) in (float, int, euclid.Point3, euclid.Vector3):
+
+            if type(attr) in ui.control_types['numeric']:
                 controltype = NumericControl
                 
-            elif type(attr) in (bool,):
+            elif type(attr) in ui.control_types['toggle']:
                 controltype = ToggleControl
 
             control = controltype(ui, **kwargs)
@@ -192,6 +192,10 @@ class Ui(object):
         self.control_group = uiGroup(3, window)
         self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
         self.control_label_group = uiGroup(10, window, parent=self.control_group)
+        
+        self.control_types = {}
+        self.control_types['numeric'] = [float, int]
+        self.control_types['toggle'] = [bool,]
         
         self.fps_display = pyglet.clock.ClockDisplay()
         self.layout = UiLayout()

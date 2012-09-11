@@ -1,3 +1,8 @@
+# XXX Move somewhere else
+import euclid
+class Color3(euclid.Vector3):
+    pass
+
 def attr_len(attr):
     # if attr is subscriptable
     if hasattr(attr, "__getitem__"):
@@ -5,17 +10,34 @@ def attr_len(attr):
     else:
         return 1
 
+class ParameterStorage(object):
+    def __init__(self, default):
+        self.data = default
+
 class Parameter(object):
-    def __init__(self, object=None, attr='', update=None):
+    INTERNAL = 0
+    EXTERNAL = 1
+    
+    def __init__(self, object=None, attr='', update=None, title='', default=None, vmin=0.0, vmax=1.0):
 
-        if not hasattr(object, attr):
-            raise ValueError("Invalid attribute provided: %s" % attr)
+        if object != None and attr != '':
+            if not hasattr(object, attr):
+                raise ValueError("Invalid attribute provided: %s" % attr)
+            self.storage = self.EXTERNAL
+            self.object = object
+            self.attr = attr
+            self.title = self.attr.capitalize()
+        else:
+            self.storage = self.INTERNAL
+            self.param_storage = ParameterStorage(default)
+            self.object = self.param_storage
+            self.attr = "data"
+            self.title = title
 
-        self.object = object
-        self.attr = attr
+        self.min = vmin
+        self.max = vmax
+
         self.update = update
-
-        self.title = self.attr.capitalize()
 
         self.len = attr_len(getattr(self.object, self.attr))
         self.type = type(getattr(self.object, self.attr))

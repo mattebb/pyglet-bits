@@ -99,6 +99,8 @@ class Camera(object):
         
         self.needs_update = True
 
+        self.params = {}
+
         self.window = window
         handlers = CameraHandler(window, self)
         window.push_handlers(handlers)

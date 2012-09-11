@@ -15,7 +15,7 @@ import ui3d
 import ctypes
 
 
-from parameter import Parameter
+from parameter import Parameter, Color3
 
 from pyglet.gl import *
 from pyglet.window import mouse
@@ -174,8 +174,10 @@ class Object3d(object):
 
         # crazy generator exp to make smooth normals by
         # summing normals of faces adjacent to each vertex
-        vn = np.array([ sum(fnrm[j] for j, fi in enumerate(idx) if i in fi) for i in range(len(verts)) ])
+        #print([np.sum(fnrm[j] for j, fi in enumerate(idx) if i in fi) for i in range(len(verts))])
+        vn = np.vstack([ np.sum(fnrm[j] for j, fi in enumerate(idx) if i in fi) for i in range(len(verts)) ])
 
+        #print(vn)
         # normalise vertex normals
         vn /= ( np.sqrt( vn[:,0]**2 + vn[:,1]**2 + vn[:,2]**2 ).reshape(-1,1) )
 
@@ -206,6 +208,37 @@ class Anim(object):
         pass
 
 class Raw(Object3d):
+    vertex_shader = '''
+    uniform float time;
+    uniform mat4 modelview;
+    uniform mat4 projection;
+    varying vec3 normal;
+    void main() {
+        gl_FrontColor = gl_Color;
+        
+        vec3 P = gl_Vertex.xyz; 
+        vec3 N = gl_Normal.xyz;
+        
+        // transform the vertex position
+        vec3 v = P + N*0.2*(0.5+0.5*sin(time*1.5));
+        vec4 modelSpacePos = modelview * vec4(v, 1.0);
+        gl_Position = projection * modelSpacePos;
+        
+        normal = normalize(modelview * vec4(N, 0.0)).xyz;
+
+    }
+    '''
+    fragment_shader = '''
+    varying vec3 normal;
+    uniform vec3 color;
+    void main(void) {
+        vec3 L = normalize( vec3( gl_LightSource[1].position ) );
+        gl_FragColor = gl_Color * vec4(color,1.0) * dot(L, normal);
+        
+    }
+    
+    '''
+    
     def __init__(self, *args, **kwargs):
         super(Raw, self).__init__(*args, **kwargs)
 
@@ -228,13 +261,15 @@ class Raw(Object3d):
                                              ('v3f/static', self.vertices),
                                              ('n3f/static', self.normals)
                                              )
-
+        self.color = Parameter(default=Color3(0.9, 0.9, 0.9), vmin=0.0, vmax=1.0)
 
     def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
         m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
 
         self.shader.bind()
+        self.shader.uniformf('time', time)
+        self.shader.uniformf('color', *self.color.getval())
         self.shader.uniform_matrixf('modelview', camera.matrix * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
@@ -448,7 +483,10 @@ scene.camera = camera
 setup()
 
 def myfunc():
-    return Raw(scene)
+    monkey = Raw(scene)
+    monkey.translate = testp.getval()[:]
+    ui.layout.addParameter(ui, monkey.color)
+    #return 
     #return ui3d.Grid(2, 6, batch)
 
 grid = ui3d.Grid(2, 6, batch )
@@ -465,8 +503,8 @@ for i in range(0):
 
 
 ui = ui2d.Ui(window)
+ui.control_types['numeric'] += [euclid.Point3, euclid.Vector3, Color3]
 ui.layout.addControl(ui, object=particles, attr="force")
-ui.layout.addControl(ui, object=camera, attr="fov")
 #ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
 #ui.layout.addControl(ui, object=cube, attr="scale", vmin=-10, vmax=10)
@@ -476,15 +514,16 @@ ui.layout.addControl(ui, func=myfunc)
 #ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.addControl(func=myfunc)
 
-p = Parameter(object=camera, attr="fov", update=camera.update_projection)
-ui.layout.addParameter(ui, p)
-
+camera.params['fov'] = Parameter(object=camera, attr="fov", update=camera.update_projection, vmin=3, vmax=160)
+ui.layout.addParameter(ui, camera.params['fov'])
+testp = Parameter(default=Vector3(0,1,3))
+ui.layout.addParameter(ui, testp)
 # cube = Cube( scene )
 # p = Parameter(object=cube, attr="translate")
 # ui.layout.addParameter(ui, p)
 
 #cube = Cube( scene )
-rawob = Raw(scene)
+# rawob = Raw(scene)
 
 
 # use this rather than decorator, 
@@ -495,15 +534,15 @@ window.push_handlers(scene)
 
 
 
-pyglet.app.run()
+#~ pyglet.app.run()
 
 
-# import cProfile
-# cProfile.run('pyglet.app.run()', '/tmp/pyprof')
-# import pstats
-# stats = pstats.Stats('/tmp/pyprof')
-# stats.sort_stats('time')
-# stats.print_stats(25)
+import cProfile
+cProfile.run('pyglet.app.run()', '/tmp/pyprof')
+import pstats
+stats = pstats.Stats('/tmp/pyprof')
+stats.sort_stats('time')
+stats.print_stats(25)
 
 # print 'INCOMING CALLERS:'
 # stats.print_callers(25)
