@@ -261,7 +261,7 @@ class Raw(Object3d):
                                              ('v3f/static', self.vertices),
                                              ('n3f/static', self.normals)
                                              )
-        self.color = Parameter(default=Color3(0.9, 0.9, 0.9), vmin=0.0, vmax=1.0)
+        self.color = Parameter(default=Color3(0.9, 0.3, 0.4), vmin=0.0, vmax=1.0)
 
     def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
@@ -503,7 +503,8 @@ for i in range(0):
 
 
 ui = ui2d.Ui(window)
-ui.control_types['numeric'] += [euclid.Point3, euclid.Vector3, Color3]
+ui.control_types['numeric'] += [euclid.Point3, euclid.Vector3]
+ui.control_types['color'] +=  [Color3]
 ui.layout.addControl(ui, object=particles, attr="force")
 #ui.layout.addControl(ui, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.layout.addControl(ui, object=cube, attr="rotate", vmin=-6, vmax=6, subtype=ui2d.UiControls.ANGLE)
@@ -514,16 +515,20 @@ ui.layout.addControl(ui, func=myfunc)
 #ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.addControl(func=myfunc)
 
-camera.params['fov'] = Parameter(object=camera, attr="fov", update=camera.update_projection, vmin=3, vmax=160)
+camera.params['fov'] = Parameter(object=camera, attr="fov", update=camera.update_projection)
 ui.layout.addParameter(ui, camera.params['fov'])
 testp = Parameter(default=Vector3(0,1,3))
 ui.layout.addParameter(ui, testp)
+
+rawob = Raw(scene)
+#testc = Parameter(default=Color3(0,0.2,0.6))
+ui.layout.addParameter(ui, rawob.color)
 # cube = Cube( scene )
 # p = Parameter(object=cube, attr="translate")
 # ui.layout.addParameter(ui, p)
 
 #cube = Cube( scene )
-# rawob = Raw(scene)
+# 
 
 
 # use this rather than decorator, 
@@ -534,15 +539,15 @@ window.push_handlers(scene)
 
 
 
-#~ pyglet.app.run()
+pyglet.app.run()
 
 
-import cProfile
-cProfile.run('pyglet.app.run()', '/tmp/pyprof')
-import pstats
-stats = pstats.Stats('/tmp/pyprof')
-stats.sort_stats('time')
-stats.print_stats(25)
+# import cProfile
+# cProfile.run('pyglet.app.run()', '/tmp/pyprof')
+# import pstats
+# stats = pstats.Stats('/tmp/pyprof')
+# stats.sort_stats('time')
+# stats.print_stats(25)
 
 # print 'INCOMING CALLERS:'
 # stats.print_callers(25)

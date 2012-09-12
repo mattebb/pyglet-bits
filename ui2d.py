@@ -12,12 +12,12 @@ class uiGroup(pyglet.graphics.OrderedGroup):
         self.window = window
         
     def set_state(self):
-        winsize = self.window.get_size()
-        
+        width, height = self.window.get_size()
+
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
 
-        glOrtho(0.0, winsize[0], 0.0, winsize[1], -1, 1)
+        glOrtho(0.0, width, 0.0, height, -1, 1)
         
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
@@ -29,9 +29,6 @@ class uiGroup(pyglet.graphics.OrderedGroup):
         pass
 
 class uiBlendGroup(uiGroup):
-    def __init__(self, order, window, parent=None):
-        super(uiBlendGroup, self).__init__(order, window, parent=parent)
-    
     def set_state(self):
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
@@ -60,6 +57,9 @@ class UiEventHandler(object):
         self.ui = ui
 
     def on_draw(self):
+        if not self.ui.overlay:
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
         self.ui.batch.draw()
         self.ui.fps_display.draw()
 
@@ -88,7 +88,7 @@ class UiEventHandler(object):
             return control.on_key_press(symbol, modifiers)
     
     def on_resize(self, width, height):
-        self.ui.layout.reposition(w=int(width*0.35), h=height)
+        self.ui.layout.reposition(w=width, y=height)
         self.ui.layout.layout()
 
 def attr_len(attr):
@@ -106,20 +106,24 @@ class UiLayout(object):
 
     HEIGHT = 16
     
-    def __init__(self, style=VERTICAL):
+    def __init__(self, x=10, y=200, w=300, wf=1.0, style=VERTICAL):
         self.style = style
         self.items = []
-        self.x = 10
-        self.y = 200
-        self.w = 300
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = 16
+        self.wf = wf
     
-    def reposition(self, x=None, y=None, w=None, h=None):
+    def reposition(self, x=None, y=None, w=None, h=None, wf=None):
         if x is not None:
             self.x = x
         if y is not None:
-            self.y = h
+            self.y = y
         if w is not None:
             self.w = w
+        if wf is not None:
+            self.wf = wf
     
     def layout(self, items=None):
         if items is None:
@@ -127,16 +131,19 @@ class UiLayout(object):
             
         y = self.y
         x = self.x
+        w = self.w * self.wf
+
         for i, item in enumerate(items):
             item.x = x
-            item.y = y
-            item.h = self.HEIGHT
+            item.y = y - item.h
+            #item.h = self.HEIGHT
             
             if self.style == self.VERTICAL:
-                item.w = self.w
-                y -= self.HEIGHT + 2
+                item.w = w
+                y = item.y
+                #y -= item.h + 2
             elif self.style == self.HORIZONTAL:
-                item.w = self.w / len(items)
+                item.w = w / len(items)
                 x += item.w
 
             if type(item) == UiLayout:
@@ -144,14 +151,17 @@ class UiLayout(object):
             
             item.reposition()
     
-    def addParameter(self, ui, param):
-        if param.type in ui.control_types['numeric']:
+    def addParameter(self, ui, param, type=None):
+        if type is not None:
+            controltype = type
+        elif param.type in ui.control_types['numeric']:
             controltype = NumericControl
-            
-        if param.type in ui.control_types['toggle']:
+        elif param.type in ui.control_types['toggle']:
             controltype = ToggleControl
+        elif param.type in ui.control_types['color']:
+            controltype = ColorSwatch
 
-        control = controltype(ui, param=param, vmin=param.min, vmax=param.max)
+        control = controltype(ui, param=param)
         self.items.append(control)
         ui.controls.append(control)
 
@@ -164,7 +174,7 @@ class UiLayout(object):
         # attribute controls
         if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
             attr = getattr( kwargs['object'], kwargs['attr'])
-
+            
             if type(attr) in ui.control_types['numeric']:
                 controltype = NumericControl
                 
@@ -185,26 +195,38 @@ class UiLayout(object):
 
 class Ui(object):
 
-    def __init__(self, window):
+    def __init__(self, window, overlay=True):
         self.window = window
+        
         self.controls = []
         self.batch = pyglet.graphics.Batch()
+
+        self.overlay = overlay
+
         self.control_group = uiGroup(3, window)
         self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
         self.control_label_group = uiGroup(10, window, parent=self.control_group)
         
         self.control_types = {}
         self.control_types['numeric'] = [float, int]
+        self.control_types['color'] = []
         self.control_types['toggle'] = [bool,]
-        
+
         self.fps_display = pyglet.clock.ClockDisplay()
-        self.layout = UiLayout()
+        ww, wh = self.window.get_size()
+        self.layout = UiLayout(x=10, y=wh, w=ww, wf=0.5 )
         
-        ui_handlers = UiEventHandler(window, self)
-        window.push_handlers(ui_handlers)
+        window.push_handlers( UiEventHandler(window, self) )
+
+    def update(self):
+        for control in self.controls:
+            control.update()
 
 class UiControl(object):
-    def __init__(self, ui, x=0, y=0, w=1, h=1, title=''):
+
+    LABELSIZE = 0.4
+
+    def __init__(self, ui, x=0, y=0, w=1, h=16, title=''):
         self.x = x
         self.y = y
         self.w = w
@@ -272,9 +294,11 @@ class UiControl(object):
         pass
 
     def press(self, *args, **kwargs):
-        pass
+        self.activate()
+        
     def release(self, *args, **kwargs):
-        pass
+        self.deactivate()
+
     def on_mouse_drag(self, *args, **kwargs):
         pass
     def on_text(self, text):
@@ -357,8 +381,6 @@ class UiTextEditControl(UiAttrControl):
     
     NUM_VALUE_WIDTH = 56
     
-    LABELSIZE = 0.4
-    
     def __init__(self, ui, **kwargs):
         super(UiTextEditControl, self).__init__( ui, **kwargs)
 
@@ -384,8 +406,6 @@ class UiTextEditControl(UiAttrControl):
             self.layouts.append(layout)
             self.carets.append(caret)
         
-        self.text_from_val()
-    
     def update_label(self):
         super(UiTextEditControl, self).update_label()
         
@@ -445,12 +465,10 @@ class UiTextEditControl(UiAttrControl):
     def textedit_confirm(self):
         if self.textediting is None: return
         self.val_from_text()
-        self.text_from_val()
         self.textedit_end()
     
     def textedit_cancel(self):
         if self.textediting is None: return
-        self.text_from_val()
         self.textedit_end()
     
     def release_outside(self, x, y, buttons, modifiers):
@@ -504,6 +522,86 @@ class ToggleControl(UiAttrControl):
         self.setval( not self.getval() )
         self.update()
 
+class PickerWindow(pyglet.window.Window):
+    def __init__(self, parentui, param, *args, **kwargs):
+        super(PickerWindow, self).__init__(*args, **kwargs)
+
+        self.parentui = parentui
+        self.param = param
+        self.ui = Ui(self, overlay=False)
+        self.ui.layout.x = 0
+        self.ui.layout.wf = 1.0
+        self.ui.layout.addParameter(self.ui, self.param, type=ColorWheel)
+
+        glClearColor(0.4, 0.4, 0.4, 1.0)
+
+    def on_resize(self, width, height):
+        glViewport(0, 0, width, height)
+        
+        if hasattr(self, "ui"):
+            self.ui.layout.reposition(w=width, y=height)
+            self.ui.layout.layout()
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        self.parentui.update()
+        
+    def on_mouse_press(self, x, y, buttons, modifiers):
+        self.parentui.update()
+        
+class ColorWheel(UiAttrControl):
+    def __init__(self, *args, **kwargs):
+        super(ColorWheel, self).__init__(*args, **kwargs)
+        self.h = 128
+
+    def update(self):
+        col = list(self.getval())
+
+        self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h) )
+
+        #self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col, col) )
+        #self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col) )
+
+    def set_color(self, x, y):
+        self.setval((x-self.x)/self.w, sub=0)
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.activate()
+            self.set_color(x, y)
+
+    def on_mouse_press(self, x, y, buttons, modifiers):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.activate()
+            self.set_color(x, y)
+
+
+class ColorSwatch(UiAttrControl):
+
+    def update(self):
+        col = list(self.getval())
+        col = col + [1.0]
+        outline_col = [.2,.2,.2, 1.0]
+
+        w = self.w*(1-self.LABELSIZE)
+        x = self.x + self.w*self.LABELSIZE
+
+        self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col, col) )
+        self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col) )
+
+
+    def open_picker(self, x, y):
+        wx, wy = self.ui.window.get_location()
+        sx, sy = self.ui.window.get_size()
+
+        window = PickerWindow(self.ui, self.param, 200, 200, \
+                                resizable=True, caption='color', \
+                                style=pyglet.window.Window.WINDOW_STYLE_TOOL)
+        window.set_location(wx+x, wy+(sy-y))
+
+    def press(self, x, y, buttons, modifiers):
+        if buttons & pyglet.window.mouse.LEFT:
+            self.open_picker(x, y)
+
 class NumericControl(UiTextEditControl):
     
     def __init__(self, *args, **kwargs):
@@ -523,8 +621,8 @@ class NumericControl(UiTextEditControl):
         return None
 
     def update(self):
-        
-        
+        self.text_from_val()
+
         w = (self.w*(1-self.LABELSIZE)) / float(self.len)
         for i in range(self.len):
             if self.active and (self.textediting == i or self.sliding == i):
@@ -593,8 +691,7 @@ class NumericControl(UiTextEditControl):
         if buttons & pyglet.window.mouse.MIDDLE:
             if self.sliding is not None:
                 self.on_mouse_drag_setval(dx)
-                self.text_from_val()
-                #self.update()
+                self.update()
 
 class ActionControl(UiControl):
     

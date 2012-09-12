@@ -124,6 +124,40 @@ def checkmark(x, y, w, h, col):
             'colors': colors
             }
 
+def generate_coords(geo, x, y, w, h):
+    uvs = geo.copy()
+    uvs[:,1] = (uvs[:,1] - y) / float(h))
+    uvs[:,0] = (uvs[:,0] - x) / float(w))
+    return list(uvs.flat)
+    
+def colorwheel(x, y, w, h):
+    steps = 12
+    dtheta = (pi*2) / float(steps)
+
+    cx = x + int(w*0.5)
+    cy = y + int(h*0.5)
+
+    # center circle
+    wheel = [cx, cy]
+    r = 32
+    for i in range(steps+1):
+        rx = r*cos(i*dtheta)
+        ry = r*sin(i*dtheta)
+        wheel += [cx+rx, cy+ry]
+    
+    #wheel = strip_fix(wheel, 2)
+    colors = [0.1,0.1,0.4,1.0]*(len(wheel)//2)
+
+    tex_coords = generate_coords(geo, x, y, w, h)
+
+    return {'id':'wheel',
+            'len': len(wheel)//2,
+            'mode': GL_TRIANGLE_FAN,
+            'vertices': wheel,
+            'colors': colors,
+            'tex_coords': tex_coords
+            }
+
 
 if __name__ == '__main__':
     np.set_printoptions(precision=3,suppress=True)

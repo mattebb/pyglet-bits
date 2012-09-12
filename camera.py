@@ -98,9 +98,9 @@ class Camera(object):
         self.persp_matrix = Matrix4()
         
         self.needs_update = True
-
+        
         self.params = {}
-
+        
         self.window = window
         handlers = CameraHandler(window, self)
         window.push_handlers(handlers)
