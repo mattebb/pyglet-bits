@@ -125,13 +125,17 @@ def checkmark(x, y, w, h, col):
             }
 
 def generate_coords(geo, x, y, w, h):
-    uvs = geo.copy()
-    uvs[:,1] = (uvs[:,1] - y) / float(h))
-    uvs[:,0] = (uvs[:,0] - x) / float(w))
+    uvs = np.array(geo).reshape(-1,2)
+    minx = np.min(uvs[:,0])
+    miny = np.min(uvs[:,1])
+    width = np.max(uvs[:,0]) - minx
+    height = np.max(uvs[:,1]) - miny
+    uvs[:,1] = (uvs[:,1] - miny) / float(height)
+    uvs[:,0] = (uvs[:,0] - minx) / float(width)
     return list(uvs.flat)
     
-def colorwheel(x, y, w, h):
-    steps = 12
+def colorwheel(x, y, w, h, v):
+    steps = 48
     dtheta = (pi*2) / float(steps)
 
     cx = x + int(w*0.5)
@@ -139,16 +143,15 @@ def colorwheel(x, y, w, h):
 
     # center circle
     wheel = [cx, cy]
-    r = 32
+    r = h / 2.0
     for i in range(steps+1):
         rx = r*cos(i*dtheta)
         ry = r*sin(i*dtheta)
         wheel += [cx+rx, cy+ry]
     
-    #wheel = strip_fix(wheel, 2)
-    colors = [0.1,0.1,0.4,1.0]*(len(wheel)//2)
+    colors = [v,v,v,1.0]*(len(wheel)//2)
 
-    tex_coords = generate_coords(geo, x, y, w, h)
+    tex_coords = generate_coords(wheel, x, y, w, h)
 
     return {'id':'wheel',
             'len': len(wheel)//2,

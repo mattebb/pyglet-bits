@@ -24,6 +24,9 @@ from shader import Shader
 import camera
 
 import numpy as np
+
+glsl_util = ''.join(open('util.glsl').readlines())
+
 '''
 try:
     # Try and create a window with multisampling (antialiasing)
@@ -228,12 +231,13 @@ class Raw(Object3d):
 
     }
     '''
-    fragment_shader = '''
+    fragment_shader = glsl_util+'''
     varying vec3 normal;
     uniform vec3 color;
     void main(void) {
         vec3 L = normalize( vec3( gl_LightSource[1].position ) );
-        gl_FragColor = gl_Color * vec4(color,1.0) * dot(L, normal);
+        vec4 col = gl_Color * vec4(color,1.0) * dot(L, normal);
+        gl_FragColor = linearrgb_to_srgb( col );
         
     }
     
@@ -298,11 +302,11 @@ class Cube(Object3d):
 
     }
     '''
-    fragment_shader = '''
+    fragment_shader = glsl_util + '''
     varying vec3 normal;
     void main(void) {
         vec3 L = normalize( vec3( gl_LightSource[1].position ) );
-        gl_FragColor = gl_Color * dot(L, normal);
+        gl_FragColor = linearrgb_to_srgb( gl_Color * dot(L, normal) );
         
     }
     
@@ -515,7 +519,7 @@ ui.layout.addControl(ui, func=myfunc)
 #ui.addControl(ui2d.UiControls.SLIDER, object=cube, attr="translate", vmin=-10, vmax=10)
 #ui.addControl(func=myfunc)
 
-camera.params['fov'] = Parameter(object=camera, attr="fov", update=camera.update_projection)
+camera.params['fov'] = Parameter(object=camera, attr="fov", update=camera.update_projection, vmin=5, vmax=150)
 ui.layout.addParameter(ui, camera.params['fov'])
 testp = Parameter(default=Vector3(0,1,3))
 ui.layout.addParameter(ui, testp)

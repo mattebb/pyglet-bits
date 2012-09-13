@@ -1,10 +1,11 @@
-﻿
-import parameter
+﻿import parameter
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
+from shader import Shader
 from ui2ddraw import *
 import euclid
+import colorsys
 
 class uiGroup(pyglet.graphics.OrderedGroup):
     def __init__(self, order, window, **kwargs):
@@ -36,6 +37,21 @@ class uiBlendGroup(uiGroup):
     def unset_state(self):
         glDisable(GL_BLEND)
 
+class uiShaderGroup(uiGroup):
+    
+    def __init__(self, order, window, vertex_shader, fragment_shader, **kwargs):
+        super(uiShaderGroup, self).__init__(order, window, **kwargs)
+
+        self.shader = Shader(vertex_shader, fragment_shader)
+
+    def set_state(self):
+        self.shader.bind()
+        #self.shader.uniform_matrixf('projection', camera.matrix * m)
+    
+    def unset_state(self):
+        self.shader.unbind()
+        
+
 
 class UiControls(object):
     
@@ -63,13 +79,16 @@ class UiEventHandler(object):
         self.ui.batch.draw()
         self.ui.fps_display.draw()
 
+    def on_expose(self):
+        self.on_draw()
+
     def on_mouse_press(self, x, y, buttons, modifiers):
         for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
-            control.press(x, y, buttons, modifiers)
+            control.on_mouse_press(x, y, buttons, modifiers)
 
     def on_mouse_release(self, x, y, buttons, modifiers):
         for control in [c for c in self.ui.controls if c.point_inside(x, y)]:
-            control.release(x, y, buttons, modifiers)
+            control.on_mouse_release(x, y, buttons, modifiers)
         
         for control in [c for c in self.ui.controls if c.active 
                                                     and not c.point_inside(x, y)]:
@@ -135,7 +154,7 @@ class UiLayout(object):
 
         for i, item in enumerate(items):
             item.x = x
-            item.y = y - item.h
+            item.y = y - item.h - 2
             #item.h = self.HEIGHT
             
             if self.style == self.VERTICAL:
@@ -161,7 +180,7 @@ class UiLayout(object):
         elif param.type in ui.control_types['color']:
             controltype = ColorSwatch
 
-        control = controltype(ui, param=param)
+        control = controltype(ui, param=param, vmin=param.min, vmax=param.max)
         self.items.append(control)
         ui.controls.append(control)
 
@@ -203,9 +222,11 @@ class Ui(object):
 
         self.overlay = overlay
 
-        self.control_group = uiGroup(3, window)
-        self.control_outline_group = uiBlendGroup(5, window, parent=self.control_group)
-        self.control_label_group = uiGroup(10, window, parent=self.control_group)
+        self.groups = {}
+        self.groups['control'] = uiGroup(3, window)
+        self.groups['outline'] = uiBlendGroup(5, window, parent=self.groups['control'])
+        self.groups['label'] = uiGroup(10, window, parent=self.groups['control'])
+        self.groups['wheel'] = uiShaderGroup(3, window, ColorWheel.vertex_shader, ColorWheel.fragment_shader, parent=self.groups['control'])
         
         self.control_types = {}
         self.control_types['numeric'] = [float, int]
@@ -216,7 +237,8 @@ class Ui(object):
         ww, wh = self.window.get_size()
         self.layout = UiLayout(x=10, y=wh, w=ww, wf=0.5 )
         
-        window.push_handlers( UiEventHandler(window, self) )
+        self.handler = UiEventHandler(window, self)
+        window.push_handlers( self.handler )
 
     def update(self):
         for control in self.controls:
@@ -242,7 +264,7 @@ class UiControl(object):
         
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
-                        group=ui.control_label_group,
+                        group=ui.groups['label'],
                         x=0, y=0,
                         **UiControls.font_style )
 
@@ -255,18 +277,27 @@ class UiControl(object):
                 
             self.vertex_lists[id].vertices = shapegeo['vertices']
             self.vertex_lists[id].colors = shapegeo['colors']
+            if 'tex_coords' in shapegeo.keys():
+                self.vertex_lists[id].tex_coords = shapegeo['tex_coords']
             
         else:
             if 'outline' in shapegeo['id']:
-                group = self.ui.control_outline_group
+                group = self.ui.groups['outline']
+            elif 'wheel' in shapegeo['id']:
+                group = self.ui.groups['wheel']
             else:
-                group = self.ui.control_group
+                group = self.ui.groups['control']
+
+            attributes = [('v2f/static', shapegeo['vertices']), \
+                          ('c4f/static', shapegeo['colors'])]
+            
+            if 'tex_coords' in shapegeo.keys():
+                attributes.append( ('t2f/static', shapegeo['tex_coords']) )
+
             self.vertex_lists[id] = self.ui.batch.add( shapegeo['len'], 
                                              shapegeo['mode'],
                                              group,
-                                             ('v2f/static', shapegeo['vertices']),
-                                             ('c4f/static', shapegeo['colors'])
-                                             )
+                                             *attributes)
 
     def point_inside(self, x, y):
         if x < self.x:          return False
@@ -293,10 +324,10 @@ class UiControl(object):
     def update(self):
         pass
 
-    def press(self, *args, **kwargs):
+    def on_mouse_press(self, *args, **kwargs):
         self.activate()
         
-    def release(self, *args, **kwargs):
+    def on_mouse_release(self, *args, **kwargs):
         self.deactivate()
 
     def on_mouse_drag(self, *args, **kwargs):
@@ -342,7 +373,7 @@ class UiAttrControl(UiControl):
         self.max = vmax
         self.subtype = subtype
         
-        self.label.text = self.title        
+        self.label.text = self.title
 
     def getval(self, sub=None):
         # Parameter interface
@@ -396,7 +427,7 @@ class UiTextEditControl(UiAttrControl):
             layout = pyglet.text.layout.IncrementalTextLayout(
                         doc, 20, 20, multiline=False,
                         batch=ui.batch,
-                        group=ui.control_label_group,
+                        group=ui.groups['label'],
                         )
                         
             caret = pyglet.text.caret.Caret(layout)
@@ -509,12 +540,12 @@ class ToggleControl(UiAttrControl):
         self.add_shape_geo( checkmark(cbx, cby, cbw, cbh, checkmark_col) )
         self.label.color = coltext
     
-    def press(self, x, y, buttons, modifiers):
+    def on_mouse_press(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.activate()
             self.toggle()
     
-    def release(self, x, y, buttons, modifiers):
+    def on_mouse_release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.deactivate()
     
@@ -523,15 +554,18 @@ class ToggleControl(UiAttrControl):
         self.update()
 
 class PickerWindow(pyglet.window.Window):
-    def __init__(self, parentui, param, *args, **kwargs):
+    def __init__(self, parentcontrol, *args, **kwargs):
         super(PickerWindow, self).__init__(*args, **kwargs)
 
-        self.parentui = parentui
-        self.param = param
+        self.parentcontrol = parentcontrol
+        self.param = self.parentcontrol.param
+        self.parentui = self.parentcontrol.ui
+
         self.ui = Ui(self, overlay=False)
         self.ui.layout.x = 0
         self.ui.layout.wf = 1.0
         self.ui.layout.addParameter(self.ui, self.param, type=ColorWheel)
+        self.ui.layout.addParameter(self.ui, self.param, type=NumericControl)
 
         glClearColor(0.4, 0.4, 0.4, 1.0)
 
@@ -542,31 +576,77 @@ class PickerWindow(pyglet.window.Window):
             self.ui.layout.reposition(w=width, y=height)
             self.ui.layout.layout()
 
+    def update_picker(self):
+        self.ui.update()
+        self.parentcontrol.update()
+        
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        self.parentui.update()
+        self.update_picker()
         
     def on_mouse_press(self, x, y, buttons, modifiers):
-        self.parentui.update()
+        self.update_picker()
         
+
 class ColorWheel(UiAttrControl):
+
+    # for all sharing ColorWheel class
+    util = ''.join(open('util.glsl').readlines())
+    vertex_shader = '''
+    void main(void) {
+        gl_TexCoord[0]  = gl_MultiTexCoord0;
+        gl_FrontColor = gl_Color;
+        gl_Position = ftransform();
+    }
+    '''
+    fragment_shader = util + '''
+    #define pi 3.141592653589793238462643383279
+    vec3 hsvrgb(float h,float s,float v) { return mix(vec3(1.),clamp((abs(fract(h+vec3(3.,2.,1.)/3.)*6.-3.)-1.),0.,1.),s)*v; }
+
+    void main(void) {
+        float u = gl_TexCoord[0].s*2.0 - 1.0;
+        float v = gl_TexCoord[0].t*2.0 - 1.0;
+        float theta = atan(v, u);
+        float h = (theta/pi)*0.5 + 0.5;
+        float s = sqrt(u*u + v*v);
+        float val = gl_Color.x;
+
+        vec4 hsv = vec4(h, s, val, 1.0);
+        vec4 rgb = linearrgb_to_srgb( hsv_to_rgb(hsv) );
+        gl_FragColor = rgb;
+    }
+    '''
+    
     def __init__(self, *args, **kwargs):
         super(ColorWheel, self).__init__(*args, **kwargs)
         self.h = 128
 
     def update(self):
-        col = list(self.getval())
+        col = self.getval()[:]
+        h, s, v = colorsys.rgb_to_hsv(*col)
 
-        self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h) )
-
-        #self.add_shape_geo( roundbase(x, self.y, w, self.h, 6, col, col) )
-        #self.add_shape_geo( roundoutline(x, self.y, w, self.h, 6, outline_col) )
+        self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h, v) )
 
     def set_color(self, x, y):
-        self.setval((x-self.x)/self.w, sub=0)
+        col = self.getval()[:]
+        hue, sat, val = colorsys.rgb_to_hsv(*col)
 
+        r = float(self.h * 0.5)
+        cx = self.x + self.w*0.5
+        cy = self.y + self.h*0.5
+
+        u = (x - cx) / r
+        v = (y - cy) / r
+
+        theta = math.atan2(v, u)
+        h = (theta/math.pi)*0.5 + 0.5
+        s = math.sqrt(u*u + v*v)
+
+        rgb = parameter.Color3(*colorsys.hsv_to_rgb(h, s, val))
+
+        self.setval(rgb)
+        
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
-            self.activate()
             self.set_color(x, y)
 
     def on_mouse_press(self, x, y, buttons, modifiers):
@@ -593,12 +673,17 @@ class ColorSwatch(UiAttrControl):
         wx, wy = self.ui.window.get_location()
         sx, sy = self.ui.window.get_size()
 
-        window = PickerWindow(self.ui, self.param, 200, 200, \
-                                resizable=True, caption='color', \
-                                style=pyglet.window.Window.WINDOW_STYLE_TOOL)
+        import platform
+        if platform.system() == 'Linux':
+            style = pyglet.window.Window.WINDOW_STYLE_DIALOG
+        else:
+            style = pyglet.window.Window.WINDOW_STYLE_TOOL
+
+        window = PickerWindow(self, 200, 200, \
+                                resizable=True, caption='color', style=style)
         window.set_location(wx+x, wy+(sy-y))
 
-    def press(self, x, y, buttons, modifiers):
+    def on_mouse_press(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.open_picker(x, y)
 
@@ -608,6 +693,9 @@ class NumericControl(UiTextEditControl):
         super(NumericControl, self).__init__(*args, **kwargs)
         
         self.sliding = None
+        
+        if self.title == '':
+            self.LABELSIZE = 0.0
 
     def point_inside_sub(self, x, y):
         w = (1-self.LABELSIZE)*self.w / float(self.len)
@@ -643,7 +731,7 @@ class NumericControl(UiTextEditControl):
         
             self.documents[i].set_style(0, len(self.documents[i].text), {'color': coltext})
 
-    def press(self, x, y, buttons, modifiers):
+    def on_mouse_press(self, x, y, buttons, modifiers):
         s = self.point_inside_sub(x, y)
         if s != None:
             if buttons & pyglet.window.mouse.LEFT:
@@ -659,7 +747,7 @@ class NumericControl(UiTextEditControl):
                 self.sliding = s
                 self.activate()
                 
-    def release(self, x, y, buttons, modifiers):
+    def on_mouse_release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.MIDDLE:
             self.deactivate()
     
@@ -729,11 +817,11 @@ class ActionControl(UiControl):
         self.add_shape_geo( roundoutline(self.x, self.y, self.w, self.h, 6, outline_col) )
         self.label.color = coltext
     
-    def press(self, x, y, buttons, modifiers):
+    def on_mouse_press(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.activate()
     
-    def release(self, x, y, buttons, modifiers):
+    def on_mouse_release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
             self.func()
             self.deactivate()
