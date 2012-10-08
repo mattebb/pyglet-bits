@@ -24,35 +24,28 @@
 # ##### END MIT LICENSE BLOCK #####
 
 import pyglet
+# Disable error checking for increased performance
+pyglet.options['debug_gl'] = False
 from pyglet.gl import *
 
 def init():
 
-    # Disable error checking for increased performance
-    pyglet.options['debug_gl'] = False
-
-    from random import random
+    
 
     import euclid
     from euclid import Vector3, Point3, Matrix4
-    import math
 
     import ui2d
-    import ui3d
 
-    import ctypes
 
     from parameter import Parameter, Color3
 
     
     from pyglet.window import mouse, key
 
-    from shader import Shader
-
     from camera import Camera
-    from object3d import Scene, Object3d
+    from object3d import Scene
     
-    import numpy as np
 
 
     '''
@@ -105,6 +98,7 @@ def init():
     ui.layout.addParameter(ui, Ptc.ptsize)
     ui.layout.addParameter(ui, Ptc.gamma)
     ui.layout.addParameter(ui, Ptc.exposure)
+    ui.layout.addParameter(ui, Ptc.hueoffset)
 
 
     scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)

@@ -55,7 +55,7 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
 
 class Ptc(Object3d):
 
-    vertex_shader = '''
+    vertex_shader = glsl_util+'''
     uniform mat4 modelview;
     uniform mat4 projection;
     varying vec3 normal;
@@ -67,23 +67,28 @@ class Ptc(Object3d):
     }
     '''
 
-    fragment_shader = '''
+    fragment_shader = glsl_util+'''
     uniform float gamma;
     uniform float exposure;
+    uniform float hueoffset;
     void main(void) {
         float gain = pow(2.0, exposure);
-        gl_FragColor.x = pow(gl_Color.x*gain, 1.0/gamma);
-        gl_FragColor.y = pow(gl_Color.y*gain, 1.0/gamma);
-        gl_FragColor.z = pow(gl_Color.z*gain, 1.0/gamma);
+        vec4 hsv = rgb_to_hsv(gl_Color);
+        hsv.r += hueoffset;
+        vec4 rgba = hsv_to_rgb(hsv);
+
+        gl_FragColor.r = pow(rgba.r*gain, 1.0/gamma);
+        gl_FragColor.g = pow(rgba.g*gain, 1.0/gamma);
+        gl_FragColor.b = pow(rgba.b*gain, 1.0/gamma);
     }
     '''
     
     # Class-wide parameters for all class instances
-    gamma = Parameter(default=2.2, vmin=0.0, vmax=3.0, title='Gamma')
-    exposure = Parameter(default=0.0, vmin=-2.0, vmax=2.0, title='Exposure')
-    gain = Parameter(default=1.0, vmin=0.0, vmax=3.0, title='Gain')
+    gamma =     Parameter(default=2.2, vmin=0.0, vmax=3.0, title='Gamma')
+    exposure =  Parameter(default=0.0, vmin=-2.0, vmax=2.0, title='Exposure')
+    gain =      Parameter(default=1.0, vmin=0.0, vmax=3.0, title='Gain')
     hueoffset = Parameter(default=0.0, vmin=-1.0, vmax=1.0, title='Hue Offset')
-    ptsize = Parameter(default=1.0, vmin=-1.0, vmax=1.0, title='Point Size')
+    ptsize =    Parameter(default=1.0, vmin=-1.0, vmax=1.0, title='Point Size')
 
     def __init__(self, scene, filename, *args, **kwargs):
         super(Ptc, self).__init__(scene, *args, **kwargs)
@@ -147,6 +152,7 @@ class Ptc(Object3d):
         self.shader.bind()
         self.shader.uniformf('gamma', self.gamma.getval())
         self.shader.uniformf('exposure', self.exposure.getval())
+        self.shader.uniformf('hueoffset', self.hueoffset.getval())
         self.shader.uniform_matrixf('modelview', camera.matrix * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         

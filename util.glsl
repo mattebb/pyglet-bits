@@ -27,7 +27,7 @@ float exp_blender(float f)
 	return pow(2.71828182846, f);
 }
 
-vec4 rgb_to_hsv(vec4 rgb, out vec4 outcol)
+vec4 rgb_to_hsv(vec4 rgb)
 {
 	float cmax, cmin, h, s, v, cdelta;
 	vec3 c;
