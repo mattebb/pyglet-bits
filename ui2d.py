@@ -29,6 +29,7 @@ class uiGroup(pyglet.graphics.OrderedGroup):
         glEnable(GL_DEPTH_TEST)
         pass
 
+
 class uiBlendGroup(uiGroup):
     def set_state(self):
         glEnable(GL_BLEND)
@@ -224,8 +225,9 @@ class Ui(object):
 
         self.groups = {}
         self.groups['control'] = uiGroup(3, window)
-        self.groups['outline'] = uiBlendGroup(5, window, parent=self.groups['control'])
         self.groups['label'] = uiGroup(10, window, parent=self.groups['control'])
+        self.groups['outline'] = uiBlendGroup(5, window, parent=self.groups['control'])
+        
         self.groups['wheel'] = uiShaderGroup(3, window, ColorWheel.vertex_shader, ColorWheel.fragment_shader, parent=self.groups['control'])
         
         self.control_types = {}
@@ -271,6 +273,12 @@ class UiControl(object):
     def add_shape_geo(self, shapegeo):
         id = shapegeo['id']
         
+        # add z dimension to 2d controls
+        vertices = np.array(shapegeo['vertices']).reshape(-1,2)
+        vertices = np.column_stack( [vertices, np.array([0.0]*len(vertices)) ] )
+        
+        shapegeo['vertices'] = list(vertices.flat)
+        
         if shapegeo['id'] in self.vertex_lists.keys():
             if self.vertex_lists[id].get_size() != shapegeo['len']:
                 self.vertex_list.resize(shapegeo['len'])
@@ -288,7 +296,7 @@ class UiControl(object):
             else:
                 group = self.ui.groups['control']
 
-            attributes = [('v2f/static', shapegeo['vertices']), \
+            attributes = [('v3f/static', shapegeo['vertices']), \
                           ('c4f/static', shapegeo['colors'])]
             
             if 'tex_coords' in shapegeo.keys():
