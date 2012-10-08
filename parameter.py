@@ -1,3 +1,31 @@
+# ##### BEGIN MIT LICENSE BLOCK #####
+#
+# Copyright (c) 2012 Matt Ebb
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+# 
+#
+# ##### END MIT LICENSE BLOCK #####
+
+
+
+
 # XXX Move somewhere else
 import euclid
 class Color3(euclid.Vector3):
@@ -42,6 +70,8 @@ class Parameter(object):
         self.len = attr_len(getattr(self.object, self.attr))
         self.type = type(getattr(self.object, self.attr))
 
+        self.needs_redraw = False
+
     def getval(self, sub=None):
         attr = getattr(self.object, self.attr)
         
@@ -64,6 +94,8 @@ class Parameter(object):
         else:
             attr = self.limited(attr, newval)
         
+        self.needs_redraw = True
+
         setattr(self.object, self.attr, attr)
         
         if self.update is not None:

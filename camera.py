@@ -1,3 +1,28 @@
+# ##### BEGIN MIT LICENSE BLOCK #####
+#
+# Copyright (c) 2012 Matt Ebb
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+# 
+#
+# ##### END MIT LICENSE BLOCK #####
+
 import platform
 import math
 from math import pi, sin, cos
@@ -10,7 +35,7 @@ from pyglet.window import key
 from pyglet.window import mouse
 from pyglet.gl import *
 
-keys = key.KeyStateHandler()
+from keys import keys
 
 class CameraHandler(object):
     def __init__(self, window, camera):
@@ -50,7 +75,7 @@ class CameraHandler(object):
 
                 
             if buttons & mouse.RIGHT:
-                s = 0.01
+                s = 0.05
                 m = self.camera.matrix
                 zaxis = Vector3(m[2], m[6], m[10])
                 m.translate(*(zaxis*s*dx))
@@ -60,9 +85,10 @@ class CameraHandler(object):
             if buttons & mouse.MIDDLE:
                 s = 0.01
                 m = self.camera.matrix
+                dist = abs(self.camera.center - Vector3(m[3], m[7], m[11])) * 0.5
                 xaxis = Vector3(m[0], m[4], m[8])
                 yaxis = Vector3(m[1], m[5], m[9])
-                trans = Matrix4.new_translate(*(xaxis*s*dx)).translate(*(yaxis*s*-dy))
+                trans = Matrix4.new_translate(*(xaxis*s*dx*dist)).translate(*(yaxis*s*-dy*dist))
                 
                 m *= trans
                 self.camera.center -= xaxis*s*dx + yaxis*s*-dy
@@ -90,7 +116,7 @@ class Camera(object):
         self.radius = 10.
         self.fov = 50.
         self.clipnear = 0.1
-        self.clipfar = 1000
+        self.clipfar = 100000
         
         self.center = Vector3(0,0,0)
 
@@ -106,6 +132,9 @@ class Camera(object):
         window.push_handlers(handlers)
         
         self.matrix = Matrix4().new_translate(0,-0.5,-6)
+
+    def focus(self, center):
+        self.matrix = Matrix4.new_look_at(Point3(self.matrix.d, self.matrix.h, self.matrix.l), center, Vector3(0,1,0))
 
     def project_ray(self, px, py):
         cam_view = (self.center - self.loc).normalize()

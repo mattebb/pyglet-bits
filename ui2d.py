@@ -1,4 +1,29 @@
-﻿import parameter
+﻿# ##### BEGIN MIT LICENSE BLOCK #####
+#
+# Copyright (c) 2012 Matt Ebb
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+# 
+#
+# ##### END MIT LICENSE BLOCK #####
+
+import parameter
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
@@ -76,6 +101,9 @@ class UiEventHandler(object):
     def on_draw(self):
         if not self.ui.overlay:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+        for control in [c for c in self.ui.controls if c.param.needs_redraw == True]:
+            control.reposition()
 
         self.ui.batch.draw()
         self.ui.fps_display.draw()
@@ -171,9 +199,9 @@ class UiLayout(object):
             
             item.reposition()
     
-    def addParameter(self, ui, param, type=None):
-        if type is not None:
-            controltype = type
+    def addParameter(self, ui, param, ptype=None):
+        if ptype is not None:
+            controltype = ptype
         elif param.type in ui.control_types['numeric']:
             controltype = NumericControl
         elif param.type in ui.control_types['toggle']:
@@ -215,7 +243,7 @@ class UiLayout(object):
 
 class Ui(object):
 
-    def __init__(self, window, overlay=True):
+    def __init__(self, window, overlay=True, layoutw=0.5):
         self.window = window
         
         self.controls = []
@@ -237,7 +265,7 @@ class Ui(object):
 
         self.fps_display = pyglet.clock.ClockDisplay()
         ww, wh = self.window.get_size()
-        self.layout = UiLayout(x=10, y=wh, w=ww, wf=0.5 )
+        self.layout = UiLayout(x=10, y=wh, w=ww, wf=layoutw )
         
         self.handler = UiEventHandler(window, self)
         window.push_handlers( self.handler )
