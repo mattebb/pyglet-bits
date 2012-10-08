@@ -61,7 +61,7 @@ class CameraHandler(object):
                 self.camera.view_update(winsize[0], winsize[1])
                 return pyglet.event.EVENT_HANDLED
 
-        elif keys[key.SPACE]:
+        elif keys[key.SPACE] or modifiers & pyglet.window.key.MOD_ALT:
             if buttons & mouse.LEFT:
                 s = 0.0075
 

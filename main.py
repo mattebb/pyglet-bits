@@ -28,64 +28,37 @@ import pyglet
 pyglet.options['debug_gl'] = False
 from pyglet.gl import *
 
-def init():
-
-    
-
-    import euclid
+def init(): 
     from euclid import Vector3, Point3, Matrix4
 
     import ui2d
 
-
     from parameter import Parameter, Color3
-
-    
-    from pyglet.window import mouse, key
-
     from camera import Camera
     from object3d import Scene
     
-
-
-    '''
-    try:
-        # Try and create a window with multisampling (antialiasing)
-        config = Config(sample_buffers=1, samples=4, depth_size=16, double_buffer=True,)
-        window = pyglet.window.Window(720, 360, resizable=True, config=config)
-    except pyglet.window.NoSuchConfigException:
-        # Fall back to no multisampling for old hardware
-        window = pyglet.window.Window(resizable=True)
-    '''
-    window = pyglet.window.Window(600, 300, resizable=True)
-    window.set_location(1200, 800)
-
-
     def setup():
         # One-time GL setup
         glClearColor(0.4, 0.4, 0.4, 1)
 
-
+    window = pyglet.window.Window(900, 400, resizable=True)
+    window.set_location(700, 800)
     scene = Scene()
+    scene.camera = Camera(window)
     pyglet.clock.schedule(scene.update)
     
-
-    scene.camera = Camera(window)
-
     setup()
 
-
-    ui = ui2d.Ui(window, layoutw=0.35)
-    ui.control_types['numeric'] += [euclid.Point3, euclid.Vector3]
+    ui = ui2d.Ui(window, layoutw=0.2)
+    ui.control_types['numeric'] += [Point3, Vector3]
     ui.control_types['color'] +=  [Color3]
 
     import ptc
     from ptc import Ptc
-
     import sys
     pointclouds = []
     for filename in sys.argv[1:]:
-        pointcloud = ptc.Ptc(scene, filename)
+        pointcloud = Ptc(scene, filename)
         pointclouds.append( pointcloud )
     
     window.push_handlers(ptc.on_mouse_drag)
@@ -99,6 +72,7 @@ def init():
     ui.layout.addParameter(ui, Ptc.gamma)
     ui.layout.addParameter(ui, Ptc.exposure)
     ui.layout.addParameter(ui, Ptc.hueoffset)
+
 
 
     scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)
@@ -117,7 +91,6 @@ def init():
 
     # print 'INCOMING CALLERS:'
     # stats.print_callers(25)
-
     # print 'OUTGOING CALLEES:'
     # stats.print_callees(25)
 
