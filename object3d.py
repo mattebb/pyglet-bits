@@ -98,7 +98,7 @@ class Scene(object):
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.H:
             self.calculate_bounds()
-            self.camera.focus(self.bbmin, self.bbmax)
+            self.camera.focus(self)
 
     def on_draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
