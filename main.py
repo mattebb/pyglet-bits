@@ -60,7 +60,8 @@ def init():
     for filename in sys.argv[1:]:
         pointcloud = Ptc(scene, filename)
         pointclouds.append( pointcloud )
-        #ui.layout.addParameter(ui, pointcloud.frame)
+        ui.layout.addControl(ui, func=scene.camera.focus, argslist=[pointcloud], title=filename[-16:])
+        
     window.push_handlers(ptc.on_mouse_drag)
     
 

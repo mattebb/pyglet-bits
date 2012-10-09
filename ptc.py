@@ -103,6 +103,7 @@ class Ptc(Object3d):
                                              ('v3f/static', self.vertices),
                                              ('c3f/static', self.colors)
                                              )
+        
     def update_frame(self, filename):
         verts = []
         cols = []

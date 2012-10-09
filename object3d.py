@@ -98,26 +98,7 @@ class Scene(object):
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.H:
             self.calculate_bounds()
-
-            diam = self.bbmax - self.bbmin
-            newcenter = self.bbmin + diam*0.5
-
-            offset = newcenter - self.camera.center
-
-            # tan(theta) = y/z
-            dist = (abs(diam)*0.35) / math.tan(math.radians(self.camera.fov*0.5))
-
-
-            self.camera.center = newcenter
-            m = self.camera.matrix
-            m[12:15] = self.camera.center
-            self.camera.matrix.translate(0,0,dist)
-
-            self.camera.matrixinv = self.camera.matrix.inverse()
-
-            #print('mat', self.camera.matrix)
-            #print('center', self.camera.center)
-
+            self.camera.focus(self.bbmin, self.bbmax)
 
     def on_draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)

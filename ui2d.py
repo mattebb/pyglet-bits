@@ -102,7 +102,7 @@ class UiEventHandler(object):
         if not self.ui.overlay:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        for control in [c for c in self.ui.controls if c.param.needs_redraw == True]:
+        for control in [c for c in self.ui.controls if hasattr(c, "param") and c.param.needs_redraw == True]:
             control.reposition()
 
         self.ui.batch.draw()
@@ -819,12 +819,16 @@ class NumericControl(UiTextEditControl):
 
 class ActionControl(UiControl):
     
-    def __init__(self, ui, object=None, attr='', func=None, **kwargs):
+    def __init__(self, ui, object=None, attr='', func=None, argslist=[], kwargsdict={}, **kwargs):
         super(ActionControl, self).__init__( ui, **kwargs )
 
         if func is None:
             raise ValueError('Invalid function')
         self.func = func
+
+        self.argslist = argslist
+        self.kwargsdict = kwargsdict
+
         if self.title == '':
             self.title = self.func.__name__.capitalize()
         self.label.text = self.title
@@ -859,7 +863,7 @@ class ActionControl(UiControl):
     
     def on_mouse_release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
-            self.func()
+            self.func(*self.argslist, **self.kwargsdict)
             self.deactivate()
 
 class LabelControl(UiControl):

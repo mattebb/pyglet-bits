@@ -49,18 +49,6 @@ class CameraHandler(object):
         if platform.system() != 'Darwin':
             dy = -dy
 
-        if modifiers & pyglet.window.key.MOD_SHIFT:
-            if buttons & mouse.RIGHT:
-                self.camera.fov -= dx
-                if self.camera.fov < 5.:
-                    self.camera.fov = 5.
-                elif self.camera.fov > 150:
-                    self.camera.fov = 150
-            
-                winsize = self.window.get_size()
-                self.camera.view_update(winsize[0], winsize[1])
-                return pyglet.event.EVENT_HANDLED
-
         elif keys[key.SPACE] or modifiers & pyglet.window.key.MOD_ALT:
             if buttons & mouse.LEFT:
                 s = 0.0075
@@ -96,15 +84,10 @@ class CameraHandler(object):
                 m *= trans
                 self.camera.center = trans * self.camera.center
 
-                
-            self.camera.matrixinv = self.camera.matrix.inverse()
-            #winsize = self.window.get_size()
-            #self.camera.view_update(winsize[0], winsize[1])
-            return pyglet.event.EVENT_HANDLED
+            self.camera.update()
 
     def on_resize(self, width, height):
         self.camera.view_update(width, height)
-        #return pyglet.event.EVENT_HANDLED
 
 
 class Camera(object):
@@ -113,6 +96,25 @@ class Camera(object):
         width, height = self.window.get_size()
         self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
 
+    def update(self):
+        self.matrixinv = self.matrix.inverse()
+
+    def focus(self, ob):
+        if not (hasattr(ob, "bbmin") and hasattr(ob, "bbmax")):
+            return
+
+        diam = ob.bbmax - ob.bbmin
+        newcenter = ob.bbmin + diam*0.5
+        offset = newcenter - self.center
+
+        dist = (abs(diam)*0.35) / math.tan(math.radians(self.fov*0.5))
+
+        self.center = newcenter
+        m = self.matrix
+        m[12:15] = self.center
+        self.matrix.translate(0,0,dist)
+
+        self.update()
 
     def __init__(self, window):
         self.fov = 50.
@@ -131,10 +133,6 @@ class Camera(object):
         self.matrix = Matrix4().new_rotate_axis(math.pi*-0.1, Vector3(1,0,0)).translate(0,0.0,6)
         self.matrixinv = self.matrix.inverse()
         self.persp_matrix = Matrix4()
-        
-
-    def focus(self, center):
-        self.matrix = Matrix4.new_look_at(Point3(self.matrix.d, self.matrix.h, self.matrix.l), center, Vector3(0,1,0))
 
     def project_ray(self, px, py):
         cam_view = (self.center - self.loc).normalize()
