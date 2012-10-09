@@ -130,9 +130,12 @@ class Ptc(Object3d):
             cols = [item for sublist in cols for item in sublist]   # flatten lists
 
             v = np.array(verts).reshape(-1,3)
+            # v[:,0] -= np.min(v[:,0])
+            # v[:,1] -= np.min(v[:,1])
+            # v[:,2] -= np.min(v[:,2])
 
-            self.bbmin = Vector3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
-            self.bbmax = Vector3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
+            self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
+            self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
 
             partio_framecache[filename] = [list(v.flat) , cols]
 
@@ -153,7 +156,7 @@ class Ptc(Object3d):
         self.shader.uniformf('gamma', self.gamma.getval())
         self.shader.uniformf('exposure', self.exposure.getval())
         self.shader.uniformf('hueoffset', self.hueoffset.getval())
-        self.shader.uniform_matrixf('modelview', camera.matrix * m)
+        self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
         self.batch.draw()

@@ -42,7 +42,7 @@ def init():
         glClearColor(0.4, 0.4, 0.4, 1)
 
     window = pyglet.window.Window(900, 400, resizable=True)
-    window.set_location(700, 800)
+    #window.set_location(700, 800)
     scene = Scene()
     scene.camera = Camera(window)
     pyglet.clock.schedule(scene.update)
@@ -60,9 +60,9 @@ def init():
     for filename in sys.argv[1:]:
         pointcloud = Ptc(scene, filename)
         pointclouds.append( pointcloud )
-    
+        #ui.layout.addParameter(ui, pointcloud.frame)
     window.push_handlers(ptc.on_mouse_drag)
-    ui.layout.addParameter(ui, pointcloud.frame)
+    
 
     #p = Parameter(object=ptc2, attr="translate")
     #ui.layout.addParameter(ui, p)

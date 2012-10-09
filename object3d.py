@@ -29,7 +29,7 @@ import pyglet
 from pyglet import graphics
 from pyglet.gl import *
 from shader import Shader
-
+import math
 from ui3d import Grid, Axes
 from parameter import Parameter, Color3
 
@@ -65,7 +65,60 @@ class Scene(object):
 
         self.grid = Grid(2, 6, self.ui3d_batch )
         self.axes = Axes(0.5, self.ui3d_batch )
-        
+
+        self.bbmin = None
+        self.bbmax = None
+    
+    def calculate_bounds(self):
+        self.bbmin = None
+        self.bbmax = None
+
+        for ob in self.objects:
+            if hasattr(ob, "bbmin") and hasattr(ob, "bbmax"):
+                if self.bbmin is None and self.bbmax is None:
+                    self.bbmin = ob.bbmin
+                    self.bbmax = ob.bbmax
+
+                else:
+                    if ob.bbmin.x < self.bbmin.x:
+                        self.bbmin.x = ob.bbmin.x
+                    if ob.bbmin.y < self.bbmin.y:
+                        self.bbmin.y = ob.bbmin.y
+                    if ob.bbmin.z < self.bbmin.z:
+                        self.bbmin.z = ob.bbmin.z
+
+                    if ob.bbmax.x > self.bbmax.x:
+                        self.bbmax.x = ob.bbmax.x
+                    if ob.bbmax.y > self.bbmax.y:
+                        self.bbmax.y = ob.bbmax.y
+                    if ob.bbmax.z > self.bbmax.z:
+                        self.bbmax.z = ob.bbmax.z
+
+
+    def on_key_press(self, symbol, modifiers):
+        if symbol == pyglet.window.key.H:
+            self.calculate_bounds()
+
+            diam = self.bbmax - self.bbmin
+            newcenter = self.bbmin + diam*0.5
+
+            offset = newcenter - self.camera.center
+
+            # tan(theta) = y/z
+            dist = (abs(diam)*0.35) / math.tan(math.radians(self.camera.fov*0.5))
+
+
+            self.camera.center = newcenter
+            m = self.camera.matrix
+            m[12:15] = self.camera.center
+            self.camera.matrix.translate(0,0,dist)
+
+            self.camera.matrixinv = self.camera.matrix.inverse()
+
+            #print('mat', self.camera.matrix)
+            #print('center', self.camera.center)
+
+
     def on_draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
@@ -80,7 +133,7 @@ class Scene(object):
         glHint (GL_LINE_SMOOTH_HINT, GL_NICEST);
         
         self.ui3d_shader.bind()
-        self.ui3d_shader.uniform_matrixf('modelview', self.camera.matrix)
+        self.ui3d_shader.uniform_matrixf('modelview', self.camera.matrixinv)
         self.ui3d_shader.uniform_matrixf('projection', self.camera.persp_matrix)
         self.ui3d_batch.draw()
         self.ui3d_shader.unbind()
@@ -255,7 +308,7 @@ class Raw(Object3d):
         self.shader.bind()
         self.shader.uniformf('time', time)
         self.shader.uniformf('color', *self.color.getval())
-        self.shader.uniform_matrixf('modelview', camera.matrix * m)
+        self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
         self.batch.draw()
@@ -371,7 +424,7 @@ class Cube(Object3d):
 
         self.shader.bind()
         self.shader.uniformf('time', time)
-        self.shader.uniform_matrixf('modelview', camera.matrix * m)
+        self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
         self.batch.draw()

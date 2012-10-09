@@ -64,38 +64,42 @@ class CameraHandler(object):
         elif keys[key.SPACE] or modifiers & pyglet.window.key.MOD_ALT:
             if buttons & mouse.LEFT:
                 s = 0.0075
-
                 m = self.camera.matrix
-                loc = Point3(*m[12:14]) # - self.camera.center   # translation part
-                xaxis = Vector3(m[0], m[4], m[8])
-                
-                m.translate(*(-loc))
-                m.rotate_axis(s*dy, xaxis).rotate_axis(s*dx, Vector3(0,1,0))
-                m.translate(*(loc))
+                mi = self.camera.matrixinv
+                globaly = Vector3(*mi[4:7])
 
+                xaxis = Vector3(1,0,0)
+                d = abs(Vector3(*m[12:15]) - self.camera.center)
+                offs = Vector3(0,0,d)
+
+                m *= Matrix4.new_translate(*(-offs)).rotate_axis(s*-dx, globaly).rotate_axis(s*-dy, xaxis).translate(*(offs))
                 
             if buttons & mouse.RIGHT:
-                s = 0.05
+                s = -0.05
                 m = self.camera.matrix
-                zaxis = Vector3(m[2], m[6], m[10])
+                zaxis = Vector3(0,0,1)
                 m.translate(*(zaxis*s*dx))
-                self.camera.center -= zaxis*s*dx
+                #self.camera.center -= zaxis*s*dx
 
             
             if buttons & mouse.MIDDLE:
-                s = 0.01
+                s = -0.01
                 m = self.camera.matrix
-                dist = abs(self.camera.center - Vector3(m[3], m[7], m[11])) * 0.5
-                xaxis = Vector3(m[0], m[4], m[8])
-                yaxis = Vector3(m[1], m[5], m[9])
-                trans = Matrix4.new_translate(*(xaxis*s*dx*dist)).translate(*(yaxis*s*-dy*dist))
-                
-                m *= trans
-                self.camera.center -= xaxis*s*dx + yaxis*s*-dy
 
-            
-            winsize = self.window.get_size()
-            self.camera.view_update(winsize[0], winsize[1])
+                dist = (Point3(*m[12:15]) - self.camera.center) * 0.3
+                dist = abs(dist)
+
+                xaxis = Vector3(1,0,0)
+                yaxis = Vector3(0,1,0)
+                trans = Matrix4.new_translate(*(xaxis*s*dx*dist)).translate(*(yaxis*s*-dy*dist))
+
+                m *= trans
+                self.camera.center = trans * self.camera.center
+
+                
+            self.camera.matrixinv = self.camera.matrix.inverse()
+            #winsize = self.window.get_size()
+            #self.camera.view_update(winsize[0], winsize[1])
             return pyglet.event.EVENT_HANDLED
 
     def on_resize(self, width, height):
@@ -111,17 +115,9 @@ class Camera(object):
 
 
     def __init__(self, window):
-        self.phi = pi / 2.0
-        self.theta = pi * 0.4
-        self.radius = 10.
         self.fov = 50.
         self.clipnear = 0.1
         self.clipfar = 100000
-        
-        self.center = Vector3(0,0,0)
-
-        self.matrix = Matrix4()
-        self.persp_matrix = Matrix4()
         
         self.needs_update = True
         
@@ -131,7 +127,11 @@ class Camera(object):
         handlers = CameraHandler(window, self)
         window.push_handlers(handlers)
         
-        self.matrix = Matrix4().new_translate(0,-0.5,-6)
+        self.center = Point3(0,0,0)
+        self.matrix = Matrix4().new_rotate_axis(math.pi*-0.1, Vector3(1,0,0)).translate(0,0.0,6)
+        self.matrixinv = self.matrix.inverse()
+        self.persp_matrix = Matrix4()
+        
 
     def focus(self, center):
         self.matrix = Matrix4.new_look_at(Point3(self.matrix.d, self.matrix.h, self.matrix.l), center, Vector3(0,1,0))
