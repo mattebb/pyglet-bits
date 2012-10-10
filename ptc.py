@@ -93,10 +93,8 @@ class Ptc(Object3d):
     def __init__(self, scene, filename, *args, **kwargs):
         super(Ptc, self).__init__(scene, *args, **kwargs)
 
-        self.frame = Parameter(default=891, vmin=0.0, vmax=1000.0, update=self.update_frame, title='Frame')
-
-        self.update_frame(filename)
-
+        self.filename = filename
+        self.update(scene.time, scene.frame)
         self.vertex_list = self.batch.add(len(self.vertices)//3,
                                              GL_POINTS,
                                              None,
@@ -104,18 +102,24 @@ class Ptc(Object3d):
                                              ('c3f/static', self.colors)
                                              )
         
-    def update_frame(self, filename):
+    def update(self, time, frame, dt=0):
         verts = []
         cols = []
         global partio_framecache
 
-        frame = int(self.frame.getval())
+        frame = int(frame)
         #filename = '/jobs/alfx/gatsby/058_dr/058_dr_0060/renders/ryank/ptc/ptc_prop_gDeus_dyn_01Shape/ptc_prop_gDeus_dyn_01Shape.%04d.ptc' % frame
         #filename = '/jobs/alfx/gatsby/058_dr/058_dr_0060/renders/ryank/ptc/ptc_sun_set_static_FG01Shape/ptc_sun_set_static_FG01Shape.ptc'
+        filename = self.filename.replace('####', '%04d'%frame)
         
         if filename not in partio_framecache.keys():
 
             ptc = partio.read(filename)
+            print('read ptc %s' % filename)
+            if ptc is None:
+                self.vertices = []
+                self.colors = []
+                return
             numparts = ptc.numParticles()
             attrs = dict((ptc.attributeInfo(i).name,ptc.attributeInfo(i)) for i in range(ptc.numAttributes()))
 
@@ -124,17 +128,17 @@ class Ptc(Object3d):
                 colattr = attrs['Cd']
             elif '_radiosity' in attrs.keys():
                 colattr = attrs['_radiosity']
-            
-            
-            verts = [ ptc.get(posattr, i) for i in range(numparts)]
-            cols =  [ ptc.get(colattr, i) for i in range(numparts)]
-            cols = [item for sublist in cols for item in sublist]   # flatten lists
+
+            if hasattr(ptc, "getArray"):
+                # using an addition to partio py api
+                verts = ptc.getArray(posattr)
+                cols = ptc.getArray(colattr)
+            else:
+                verts = [ ptc.get(posattr, i) for i in range(numparts)]
+                cols =  [ ptc.get(colattr, i) for i in range(numparts)]
+                cols = [item for sublist in cols for item in sublist]   # flatten lists
 
             v = np.array(verts).reshape(-1,3)
-            # v[:,0] -= np.min(v[:,0])
-            # v[:,1] -= np.min(v[:,1])
-            # v[:,2] -= np.min(v[:,2])
-
             self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
             self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
 
@@ -147,6 +151,14 @@ class Ptc(Object3d):
             self.vertex_list.resize(len(self.vertices)//3)
             self.vertex_list.vertices = self.vertices
             self.vertex_list.colors = self.colors
+            # self.vertex_list.delete()
+            # self.vertex_list = self.batch.add(len(self.vertices)//3,
+            #                                  GL_POINTS,
+            #                                  None,
+            #                                  ('v3f/static', self.vertices),
+            #                                  ('c3f/static', self.colors)
+            #                                  )
+            
 
     def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
