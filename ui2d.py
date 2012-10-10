@@ -472,6 +472,10 @@ class UiTextEditControl(UiAttrControl):
             self.documents.append(doc)
             self.layouts.append(layout)
             self.carets.append(caret)
+
+        self.text_from_val()
+
+        
         
     def update_label(self):
         super(UiTextEditControl, self).update_label()
@@ -520,6 +524,7 @@ class UiTextEditControl(UiAttrControl):
     
     def textedit_update(self, text):
         self.carets[self.textediting].on_text(text)
+
         
     def textedit_end(self):
         self.deactivate()
@@ -532,6 +537,7 @@ class UiTextEditControl(UiAttrControl):
     def textedit_confirm(self):
         if self.textediting is None: return
         self.val_from_text()
+        self.text_from_val()    # update the displayed text with consistent decimal rounding etc.
         self.textedit_end()
     
     def textedit_cancel(self):
@@ -621,7 +627,6 @@ class PickerWindow(pyglet.window.Window):
         
     def on_mouse_press(self, x, y, buttons, modifiers):
         self.update_picker()
-        
 
 class ColorWheel(UiAttrControl):
 
@@ -690,7 +695,6 @@ class ColorWheel(UiAttrControl):
             self.activate()
             self.set_color(x, y)
 
-
 class ColorSwatch(UiAttrControl):
 
     def update(self):
@@ -745,8 +749,6 @@ class NumericControl(UiTextEditControl):
         return None
 
     def update(self):
-        self.text_from_val()
-
         w = (self.w*(1-self.LABELSIZE)) / float(self.len)
         for i in range(self.len):
             if self.active and (self.textediting == i or self.sliding == i):
@@ -782,6 +784,7 @@ class NumericControl(UiTextEditControl):
             elif buttons & pyglet.window.mouse.MIDDLE:
                 self.sliding = s
                 self.activate()
+
                 
     def on_mouse_release(self, x, y, buttons, modifiers):
         if buttons & pyglet.window.mouse.MIDDLE:
@@ -803,6 +806,7 @@ class NumericControl(UiTextEditControl):
     def on_mouse_drag_setval(self, dx):
         sensitivity = (self.max - self.min) / 500.0
         self.setval( self.getval(sub=self.sliding) + sensitivity*dx, sub=self.sliding )
+        self.text_from_val()
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         s = self.point_inside_sub(x, y)
