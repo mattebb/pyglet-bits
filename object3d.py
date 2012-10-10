@@ -57,9 +57,10 @@ class Scene(object):
         self.objects = []
         self.camera = None
         
-        self.playback = self.PLAYING
+        self.playback = self.PAUSED
         self.time = 0   # in seconds?
-        
+        self.frame = 1
+
         self.ui3d_shader = Shader(self.vertex_shader)
         self.ui3d_batch = pyglet.graphics.Batch()
 
@@ -80,25 +81,23 @@ class Scene(object):
                     self.bbmax = ob.bbmax
 
                 else:
-                    if ob.bbmin.x < self.bbmin.x:
-                        self.bbmin.x = ob.bbmin.x
-                    if ob.bbmin.y < self.bbmin.y:
-                        self.bbmin.y = ob.bbmin.y
-                    if ob.bbmin.z < self.bbmin.z:
-                        self.bbmin.z = ob.bbmin.z
+                    self.bbmin.x = min(ob.bbmin.x, self.bbmin.x)
+                    self.bbmin.y = min(ob.bbmin.y, self.bbmin.y)
+                    self.bbmin.z = min(ob.bbmin.z, self.bbmin.z)
 
-                    if ob.bbmax.x > self.bbmax.x:
-                        self.bbmax.x = ob.bbmax.x
-                    if ob.bbmax.y > self.bbmax.y:
-                        self.bbmax.y = ob.bbmax.y
-                    if ob.bbmax.z > self.bbmax.z:
-                        self.bbmax.z = ob.bbmax.z
+                    self.bbmax.x = max(ob.bbmax.x, self.bbmax.x)
+                    self.bbmax.y = max(ob.bbmax.y, self.bbmax.y)
+                    self.bbmax.z = max(ob.bbmax.z, self.bbmax.z)
 
 
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.H:
             self.calculate_bounds()
             self.camera.focus(self)
+        if symbol == pyglet.window.key.RIGHT:
+            self.frame += 1
+            self.update_time()
+
 
     def on_draw(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -121,13 +120,14 @@ class Scene(object):
 
         glDisable(GL_LINE_SMOOTH)
 
-    
+    def update_time(self):            
+        for ob in self.objects:
+            ob.update(self.time, self.frame)
+
     def update(self, dt):
         if self.playback == self.PLAYING:
             self.time += dt
-        
-        for ob in self.objects:
-            ob.update(self.time, dt=dt)
+            self.update_time()
 
 
 
@@ -203,7 +203,7 @@ class Object3d(object):
 
         scene.objects.append( self )
     
-    def update(self, time, dt=0):
+    def update(self, time, frame, dt=0):
         pass
     
     def draw(self, **kwargs):
