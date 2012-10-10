@@ -49,7 +49,7 @@ class CameraHandler(object):
         if platform.system() != 'Darwin':
             dy = -dy
 
-        elif keys[key.SPACE] or modifiers & pyglet.window.key.MOD_ALT:
+        if keys[key.SPACE] or modifiers & pyglet.window.key.MOD_ALT:
             if buttons & mouse.LEFT:
                 s = 0.0075
                 m = self.camera.matrix
