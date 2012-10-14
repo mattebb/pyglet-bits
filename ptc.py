@@ -95,7 +95,7 @@ class Ptc(Object3d):
 
         self.filename = filename
         self.update(scene.time, scene.frame)
-        self.vertex_list = self.batch.add(len(self.vertices)//3,
+        self.vertex_list = self.batch.add(self.numparts,
                                              GL_POINTS,
                                              None,
                                              ('v3f/static', self.vertices),
@@ -120,7 +120,7 @@ class Ptc(Object3d):
                 self.vertices = []
                 self.colors = []
                 return
-            numparts = ptc.numParticles()
+            self.numparts = ptc.numParticles()
             attrs = dict((ptc.attributeInfo(i).name,ptc.attributeInfo(i)) for i in range(ptc.numAttributes()))
 
             posattr = ptc.attributeInfo(0)
@@ -129,26 +129,33 @@ class Ptc(Object3d):
             elif '_radiosity' in attrs.keys():
                 colattr = attrs['_radiosity']
 
-            if hasattr(ptc, "getArray"):
-                # using an addition to partio py api
-                verts = ptc.getArray(posattr)
-                cols = ptc.getArray(colattr)
-            else:
-                verts = [ ptc.get(posattr, i) for i in range(numparts)]
-                cols =  [ ptc.get(colattr, i) for i in range(numparts)]
-                cols = [item for sublist in cols for item in sublist]   # flatten lists
+            # if hasattr(ptc, "getNDArray"):
+            verts = ptc.getNDArray(posattr)
+            cols = ptc.getNDArray(colattr)
+            # elif hasattr(ptc, "getArray"):
+            #     # using an addition to partio py api
+            #     verts = ptc.getArray(posattr)
+            #     cols = ptc.getArray(colattr)
+            # else:
+            #     verts = [ ptc.get(posattr, i) for i in range(numparts)]
+            #     cols =  [ ptc.get(colattr, i) for i in range(numparts)]
+            #     cols = [item for sublist in cols for item in sublist]   # flatten lists
 
-            v = np.array(verts).reshape(-1,3)
+            # v = np.array(verts).reshape(-1,3)
+            #cols = list(cols.flat)
+            v = verts.reshape(-1,3)
             self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
             self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
 
-            partio_framecache[filename] = [list(v.flat) , cols]
+            import ctypes
+            #partio_framecache[filename] = [list(v.flat) , cols]
+            partio_framecache[filename] = [ v.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), cols.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) ]
 
         self.vertices = partio_framecache[filename][0]
         self.colors = partio_framecache[filename][1]
 
         if hasattr(self, "vertex_list"):
-            self.vertex_list.resize(len(self.vertices)//3)
+            self.vertex_list.resize(self.numparts)
             self.vertex_list.vertices = self.vertices
             self.vertex_list.colors = self.colors
             # self.vertex_list.delete()
