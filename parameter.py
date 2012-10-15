@@ -100,3 +100,6 @@ class Parameter(object):
         
         if self.update is not None:
             self.update()
+
+    val = property(getval, setval)
+    

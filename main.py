@@ -45,7 +45,6 @@ def init():
         glClearColor(0.4, 0.4, 0.4, 1)
 
     window = pyglet.window.Window(900, 400, resizable=True)
-    #window.set_location(700, 800)
     scene = Scene()
     scene.camera = Camera(window)
     pyglet.clock.schedule(scene.update)
@@ -56,30 +55,21 @@ def init():
     ui.control_types['numeric'] += [Point3, Vector3]
     ui.control_types['color'] +=  [Color3]
 
+    # load ptc objects from cmd line
     import ptc
     from ptc import Ptc
     import sys
-    def load_ptc():
-        pointclouds = []
-        for filename in sys.argv[1:]:
-            pointcloud = Ptc(scene, filename)
-            pointclouds.append( pointcloud )
-            ui.layout.addControl(ui, func=scene.camera.focus, argslist=[pointcloud], title=filename[-18:])
-        scene.calculate_bounds()
-        scene.camera.focus(scene)
 
-    #ui.layout.addControl(ui, func=load_ptc, title='Load')
-    load_ptc()
+    scene.pointclouds = []
+    for filename in sys.argv[1:]:
+        pointcloud = Ptc(scene, filename)
+        scene.pointclouds.append( pointcloud )
+        ui.layout.addControl(ui, func=scene.camera.focus, argslist=[pointcloud], title=filename[-18:])
+    ptch = ptc.PtcHandler(scene, window)
+    scene.calculate_bounds()
+    scene.camera.focus(scene)
 
-    ui.layout.addParameter(ui, Ptc.ptsize)
-
-    window.push_handlers(ptc.on_mouse_drag)
-    
-
-    #p = Parameter(object=ptc2, attr="translate")
-    #ui.layout.addParameter(ui, p)
-
-    # class variables, global
+    # ptc class variables, global
     ui.layout.addParameter(ui, Ptc.ptsize)
     ui.layout.addParameter(ui, Ptc.gamma)
     ui.layout.addParameter(ui, Ptc.exposure)
@@ -89,11 +79,11 @@ def init():
 
     scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)
     ui.layout.addParameter(ui, scene.camera.fieldofview)
-    scene.frameslider = Parameter(object=scene, attr="frame", update=scene.update_time, vmin=0, vmax=128)
-    ui.layout.addParameter(ui, scene.frameslider)
+    ui.layout.addParameter(ui, scene.frame)
 
-
+    # Event handlers
     window.push_handlers(scene)
+    window.push_handlers(ptch)
 
     pyglet.app.run()
 

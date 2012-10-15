@@ -59,7 +59,7 @@ class Scene(object):
         
         self.playback = self.PAUSED
         self.time = 0   # in seconds?
-        self.frame = 1
+        self.frame = Parameter(default=891, vmin=0, vmax=100, title='Frame', update=self.update_time)
 
         self.ui3d_shader = Shader(self.vertex_shader)
         self.ui3d_batch = pyglet.graphics.Batch()
@@ -79,7 +79,6 @@ class Scene(object):
                 if self.bbmin is None and self.bbmax is None:
                     self.bbmin = ob.bbmin
                     self.bbmax = ob.bbmax
-
                 else:
                     self.bbmin.x = min(ob.bbmin.x, self.bbmin.x)
                     self.bbmin.y = min(ob.bbmin.y, self.bbmin.y)
@@ -95,8 +94,9 @@ class Scene(object):
             self.calculate_bounds()
             self.camera.focus(self)
         if symbol == pyglet.window.key.RIGHT:
-            self.frame += 1
-            self.update_time()
+            self.frame.setval( self.frame.getval() + 1 )
+        if symbol == pyglet.window.key.LEFT:
+            self.frame.setval( self.frame.getval() - 1 )
 
 
     def on_draw(self):
@@ -122,7 +122,7 @@ class Scene(object):
 
     def update_time(self):            
         for ob in self.objects:
-            ob.update(self.time, self.frame)
+            ob.update(self.time, self.frame.getval())
 
     def update(self, dt):
         if self.playback == self.PLAYING:

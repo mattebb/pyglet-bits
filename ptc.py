@@ -24,7 +24,9 @@
 # ##### END MIT LICENSE BLOCK #####
 
 import numpy as np
+import math
 from euclid import Vector3, Point3, Matrix4
+
 import pyglet
 from pyglet.gl import *
 from pyglet.window import mouse, key
@@ -33,23 +35,61 @@ from shader import Shader
 from parameter import Parameter
 
 
-import partio
-partio_framecache = {}
+import ctypes
+from ctypes import pointer, sizeof
 
+
+import partio
 
 glsl_util = ''.join(open('util.glsl').readlines())
 
 from keys import keys
 
-def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
-    if keys[key.E]:
-        if buttons & mouse.LEFT:
-            Ptc.exposure.setval( Ptc.exposure.getval() + dx*0.01 )
-    if keys[key.Y]:
-        if buttons & mouse.LEFT:
-            Ptc.gamma.setval( Ptc.gamma.getval() + dx*0.01 )
+class PtcHandler(object):
+    def __init__(self, scene, window):
+        self.scene = scene
+        self.window = window
 
+    def on_key_press(self, symbol, modifiers):
+        if symbol in (pyglet.window.key.LCTRL, pyglet.window.key.RCTRL):
+            cursor = self.window.get_system_mouse_cursor(self.window.CURSOR_CROSSHAIR)
+            self.window.set_mouse_cursor(cursor)
+    def on_key_release(self, symbol, modifiers):
+        if symbol in (pyglet.window.key.LCTRL, pyglet.window.key.RCTRL):
+            cursor = self.window.get_system_mouse_cursor(self.window.CURSOR_DEFAULT)
+            self.window.set_mouse_cursor(cursor)
 
+    
+
+    def on_mouse_release(self, x, y, buttons, modifiers):
+        if buttons & pyglet.window.mouse.LEFT and \
+            (modifiers & pyglet.window.key.LCTRL or modifiers & pyglet.window.key.RCTRL):
+
+            ray = self.scene.camera.project_ray(x, y)
+            pts = []
+            for ptcloud in self.scene.pointclouds:
+                pt = ptcloud.intersect(ray)
+                if pt is not None:
+                    pts.append( pt )
+            if len(pts) == 0: return
+
+            pts.sort(key=lambda x: x[0])
+            class BBox(object): pass
+            bbox = BBox()
+            bbox.bbmin = pts[0] - Vector3(2,2,2)
+            bbox.bbmax = pts[0] + Vector3(2,2,2)
+
+            self.scene.camera.focus(bbox)
+            return pyglet.event.EVENT_HANDLED
+    
+
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        if keys[key.E]:
+            if buttons & mouse.LEFT:
+                Ptc.exposure.setval( Ptc.exposure.getval() + dx*0.01 )
+        if keys[key.Y]:
+            if buttons & mouse.LEFT:
+                Ptc.gamma.setval( Ptc.gamma.getval() + dx*0.01 )
 
 
 
@@ -90,82 +130,114 @@ class Ptc(Object3d):
     hueoffset = Parameter(default=0.0, vmin=-1.0, vmax=1.0, title='Hue Offset')
     ptsize =    Parameter(default=1.0, vmin=-1.0, vmax=1.0, title='Point Size')
 
+    def update_buffers(self):
+        self.vbo_vert_data = self.verts.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        self.vbo_col_data = self.cols.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo_vert_id)
+        glBufferData(GL_ARRAY_BUFFER, sizeof(ctypes.c_float)*len(self.verts), self.vbo_vert_data, GL_STATIC_DRAW)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo_col_id)
+        glBufferData(GL_ARRAY_BUFFER, sizeof(ctypes.c_float)*len(self.cols), self.vbo_col_data, GL_STATIC_DRAW)
+
     def __init__(self, scene, filename, *args, **kwargs):
         super(Ptc, self).__init__(scene, *args, **kwargs)
 
         self.filename = filename
-        self.update(scene.time, scene.frame)
-        self.vertex_list = self.batch.add(self.numparts,
-                                             GL_POINTS,
-                                             None,
-                                             ('v3f/static', self.vertices),
-                                             ('c3f/static', self.colors)
-                                             )
+        self.frame = None
+        self.vbo_vert_data = None
+        self.vbo_col_data = None
+
+        # load ptc, store in self.verts/self.cols
+        self.update(scene.time, scene.frame.getval())
+
+        # create and fill vertex buffers
+        self.vbo_vert_id = GLuint()
+        self.vbo_col_id = GLuint()
+        glGenBuffers(1, pointer(self.vbo_vert_id))
+        glGenBuffers(1, pointer(self.vbo_col_id))
+        self.update_buffers()
         
+
     def update(self, time, frame, dt=0):
-        verts = []
-        cols = []
-        global partio_framecache
-
         frame = int(frame)
-        #filename = '/jobs/alfx/gatsby/058_dr/058_dr_0060/renders/ryank/ptc/ptc_prop_gDeus_dyn_01Shape/ptc_prop_gDeus_dyn_01Shape.%04d.ptc' % frame
-        #filename = '/jobs/alfx/gatsby/058_dr/058_dr_0060/renders/ryank/ptc/ptc_sun_set_static_FG01Shape/ptc_sun_set_static_FG01Shape.ptc'
-        filename = self.filename.replace('####', '%04d'%frame)
+        if self.frame == frame: 
+            return
+
+        self.frame = frame
+        filename = self.filename.replace('####', '%04d' % self.frame)
+
+        ptc = partio.read(filename)
+        if ptc is None:
+            return
+
+        #print('read ptc %s' % filename)
+
+        self.numparts = ptc.numParticles()
+        attrs = dict((ptc.attributeInfo(i).name,ptc.attributeInfo(i)) for i in range(ptc.numAttributes()))
+
+        posattr = ptc.attributeInfo(0)
+        if 'Cd' in attrs.keys():
+            colattr = attrs['Cd']
+        elif '_radiosity' in attrs.keys():
+            colattr = attrs['_radiosity']
+
+        # loat position and colour data
+        if hasattr(ptc, "getNDArray"):
+            # using an addition to partio py api
+            self.verts = ptc.getNDArray(posattr)
+            self.cols = ptc.getNDArray(colattr)
+        elif hasattr(ptc, "getArray"):
+            # using an addition to partio py api
+            self.verts = np.array(ptc.getArray(posattr))
+            self.cols = np.array(ptc.getArray(colattr))
+        else:
+            self.verts = np.array([ ptc.get(posattr, i) for i in range(numparts)])
+            self.cols =  self.verts([ ptc.get(colattr, i) for i in range(numparts)])
+
+        # calculate bbox min and max
+        v = self.verts.reshape(-1,3)
+        self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
+        self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
+
+        if self.vbo_vert_data is not None:
+            self.update_buffers()
+
+    def intersect(self, ray):
+        """
+        Intersect a ray with a point cloud.
         
-        if filename not in partio_framecache.keys():
+        Find the points within a specified angle threshold 
+        between the ray vector and the vector ray origin->point
+        and take the closest point from that list
+        """
+        dot_thresh = math.cos(math.radians(1))  # 1 degree angle
+        verts = self.verts.reshape(-1,3)
+        
+        # vector ray origin to point
+        rayp = np.array(ray.p[:]).reshape(-1,3).repeat(len(verts), axis=0)
+        v = verts - rayp
+        # normalise
+        v_length = np.sqrt((v ** 2).sum(1)).reshape(-1,1)
+        v /= v_length
+        # dot product (vector to point . ray vector)
+        d = (v * np.array(ray.v)).sum(1)
+        
+        # boolean array representing where dot > 0.99
+        condition = (d > dot_thresh).reshape(-1,1)
+        
+        # filtered selection where condition is true
+        verts_within_angle = verts[condition.repeat(3, axis=1)].reshape(-1,3)
+        v_len_within_angle = v_length[condition]
 
-            ptc = partio.read(filename)
-            print('read ptc %s' % filename)
-            if ptc is None:
-                self.vertices = []
-                self.colors = []
-                return
-            self.numparts = ptc.numParticles()
-            attrs = dict((ptc.attributeInfo(i).name,ptc.attributeInfo(i)) for i in range(ptc.numAttributes()))
+        if len(verts_within_angle) == 0:
+            return None
 
-            posattr = ptc.attributeInfo(0)
-            if 'Cd' in attrs.keys():
-                colattr = attrs['Cd']
-            elif '_radiosity' in attrs.keys():
-                colattr = attrs['_radiosity']
-
-            # if hasattr(ptc, "getNDArray"):
-            verts = ptc.getNDArray(posattr)
-            cols = ptc.getNDArray(colattr)
-            # elif hasattr(ptc, "getArray"):
-            #     # using an addition to partio py api
-            #     verts = ptc.getArray(posattr)
-            #     cols = ptc.getArray(colattr)
-            # else:
-            #     verts = [ ptc.get(posattr, i) for i in range(numparts)]
-            #     cols =  [ ptc.get(colattr, i) for i in range(numparts)]
-            #     cols = [item for sublist in cols for item in sublist]   # flatten lists
-
-            # v = np.array(verts).reshape(-1,3)
-            #cols = list(cols.flat)
-            v = verts.reshape(-1,3)
-            self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
-            self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
-
-            import ctypes
-            #partio_framecache[filename] = [list(v.flat) , cols]
-            partio_framecache[filename] = [ v.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), cols.ctypes.data_as(ctypes.POINTER(ctypes.c_float)) ]
-
-        self.vertices = partio_framecache[filename][0]
-        self.colors = partio_framecache[filename][1]
-
-        if hasattr(self, "vertex_list"):
-            self.vertex_list.resize(self.numparts)
-            self.vertex_list.vertices = self.vertices
-            self.vertex_list.colors = self.colors
-            # self.vertex_list.delete()
-            # self.vertex_list = self.batch.add(len(self.vertices)//3,
-            #                                  GL_POINTS,
-            #                                  None,
-            #                                  ('v3f/static', self.vertices),
-            #                                  ('c3f/static', self.colors)
-            #                                  )
-            
+        # sort verts within angle based on ordering of distance to ray origin
+        sort_order = v_len_within_angle.argsort()
+        ordered_verts = verts_within_angle[sort_order]
+        
+        l = ordered_verts[0].tolist()
+        
+        return Vector3(*l)
 
     def draw(self, time=0, camera=None):
         # stupid rotate_euler taking coords out of order!
@@ -179,5 +251,18 @@ class Ptc(Object3d):
         self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
-        self.batch.draw()
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo_vert_id)
+        glVertexPointer(3, GL_FLOAT, 0, 0)
+
+        glEnableClientState(GL_COLOR_ARRAY)
+        glBindBuffer(GL_ARRAY_BUFFER, self.vbo_col_id)
+        glColorPointer(3, GL_FLOAT, 0, 0)
+
+        glDrawArrays( GL_POINTS, 0, self.numparts )
+
+        glDisableClientState(GL_VERTEX_ARRAY)
+        glDisableClientState(GL_COLOR_ARRAY)
+
+        # self.batch.draw()
         self.shader.unbind()

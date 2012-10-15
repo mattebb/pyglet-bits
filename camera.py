@@ -28,7 +28,7 @@ import math
 from math import pi, sin, cos
 
 import euclid
-from euclid import Vector3, Point3, Matrix4
+from euclid import Vector3, Point3, Matrix4, Ray3
 
 import pyglet
 from pyglet.window import key
@@ -102,6 +102,8 @@ class Camera(object):
     def focus(self, ob):
         if not (hasattr(ob, "bbmin") and hasattr(ob, "bbmax")):
             return
+        if ob.bbmin is None or ob.bbmax is None: 
+            return
 
         diam = ob.bbmax - ob.bbmin
         newcenter = ob.bbmin + diam*0.5
@@ -134,11 +136,19 @@ class Camera(object):
         self.matrixinv = self.matrix.inverse()
         self.persp_matrix = Matrix4()
 
+    @property
+    def location(self):
+        return Point3(*self.matrix[12:15])
+
     def project_ray(self, px, py):
-        cam_view = (self.center - self.loc).normalize()
-        
-        self.cam_h =  cam_view.cross(self.up).normalize()
-        self.cam_v = -1 * cam_view.cross(self.cam_h).normalize()
+
+        # cam_view = (self.center - self.location).normalize()
+        # self.cam_h =  cam_view.cross(self.up).normalize()
+        # self.cam_v = -1 * cam_view.cross(self.cam_h).normalize()
+
+        view = -Vector3(*self.matrix[8:11])
+        h = Vector3(*self.matrix[0:3])
+        v = Vector3(*self.matrix[4:7])
         
         half_v = math.tan(math.radians(self.fov)*0.5) * self.clipnear
         win = self.window.get_size()
@@ -149,26 +159,13 @@ class Camera(object):
         nx = (px - win[0]*0.5) / (win[0]*0.5)
         ny = (py - win[1]*0.5) / (win[1]*0.5)
         
-        self.cam_h *= half_h
-        self.cam_v *= half_v
+        h *= half_h
+        v *= half_v
 
-        click = self.loc + (cam_view*self.clipnear)  + (nx * self.cam_h) + (ny * self.cam_v)
+        click = self.location + (view*self.clipnear)  + (nx * h) + (ny * v)
 
-        '''
-        modelview = (GLdouble * 16)()
-        projection = (GLdouble * 16)()
-        view = (GLint * 4)()
-        
-        glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
-        glGetDoublev (GL_PROJECTION_MATRIX, projection);
-        glGetIntegerv( GL_VIEWPORT, view );
-        
-        wx,wy,wz = GLdouble(),GLdouble(),GLdouble() 
-        gluUnProject(px, py, self.clipnear, modelview, projection, view, wx, wy, wz)
-        click = Vector3(wx.value, wy.value, wz.value)
-        '''
-        dir = (click - self.loc).normalize()
-        return click, dir
+        dir = (click - self.location).normalize()
+        return Ray3(click, dir)
     
     def view_update(self, width, height):
         glViewport(0, 0, width, height)
