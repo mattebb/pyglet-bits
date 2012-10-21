@@ -41,7 +41,11 @@ class Scene(object):
     
     PAUSED = 0
     PLAYING = 1
+    PLAYING_REVERSE = 2
     
+    SKIP_FRAME = 0
+    EVERY_FRAME = 1
+
     vertex_shader = '''
     uniform mat4 modelview;
     uniform mat4 projection;
@@ -58,6 +62,7 @@ class Scene(object):
         self.camera = None
         
         self.playback = self.PAUSED
+        self.playback_skip = self.EVERY_FRAME
         self.time = 0   # in seconds?
         self.frame = Parameter(default=891, vmin=0, vmax=100, title='Frame', update=self.update_time)
 
@@ -94,9 +99,12 @@ class Scene(object):
             self.calculate_bounds()
             self.camera.focus(self)
         if symbol == pyglet.window.key.RIGHT:
-            self.frame.setval( self.frame.getval() + 1 )
+            self.frame.setval( self.frame.value + 1 )
         if symbol == pyglet.window.key.LEFT:
-            self.frame.setval( self.frame.getval() - 1 )
+            self.frame.setval( self.frame.value - 1 )
+        if symbol == pyglet.window.key.P:
+            self.playback = self.PLAYING
+
 
 
     def on_draw(self):
@@ -122,12 +130,18 @@ class Scene(object):
 
     def update_time(self):            
         for ob in self.objects:
-            ob.update(self.time, self.frame.getval())
+            ob.update(self.time, self.frame.value)
 
     def update(self, dt):
         if self.playback == self.PLAYING:
-            self.time += dt
-            self.update_time()
+            if self.playback_skip == self.EVERY_FRAME:
+                self.frame.setval( self.frame.value + 1 )
+                self.time += (1/24.0)
+                self.update_time()
+            elif self.playback_skip == self.SKIP_FRAME:
+                self.time += dt
+                self.frame.setval( 891 + self.time * 24.0 )
+                self.update_time()
 
 
 
@@ -212,7 +226,7 @@ class Object3d(object):
 # XXX
 def myfunc():
     monkey = Raw(scene)
-    monkey.translate = testp.getval()[:]
+    monkey.translate = testp.value[:]
     ui.layout.addParameter(ui, monkey.color)
     #return 
     #return ui3d.Grid(2, 6, batch)
@@ -288,7 +302,7 @@ class Raw(Object3d):
 
         self.shader.bind()
         self.shader.uniformf('time', time)
-        self.shader.uniformf('color', *self.color.getval())
+        self.shader.uniformf('color', *self.color.value)
         self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
