@@ -32,7 +32,7 @@ from pyglet.gl import *
 from pyglet.window import mouse, key
 from object3d import Object3d
 from shader import Shader
-from parameter import Parameter
+from parameter import Parameter, Color3
 
 
 import ctypes
@@ -86,10 +86,12 @@ class PtcHandler(object):
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if keys[key.E]:
             if buttons & mouse.LEFT:
-                Ptc.exposure.setval( Ptc.exposure.getval() + dx*0.01 )
+                Ptc.exposure.setval( Ptc.exposure.value + dx*0.01 )
+                return pyglet.event.EVENT_HANDLED
         if keys[key.Y]:
             if buttons & mouse.LEFT:
-                Ptc.gamma.setval( Ptc.gamma.getval() + dx*0.01 )
+                Ptc.gamma.setval( Ptc.gamma.value + dx*0.01 )
+                return pyglet.event.EVENT_HANDLED
 
 
 
@@ -106,11 +108,13 @@ class Ptc(Object3d):
         gl_Position = projection * modelSpacePos;
     }
     '''
-
+    
     fragment_shader = glsl_util+'''
     uniform float gamma;
     uniform float exposure;
     uniform float hueoffset;
+    uniform float decimate;
+
     void main(void) {
         float gain = pow(2.0, exposure);
         vec4 hsv = rgb_to_hsv(gl_Color);
@@ -120,15 +124,35 @@ class Ptc(Object3d):
         gl_FragColor.r = pow(rgba.r*gain, 1.0/gamma);
         gl_FragColor.g = pow(rgba.g*gain, 1.0/gamma);
         gl_FragColor.b = pow(rgba.b*gain, 1.0/gamma);
+        gl_FragColor.a = 1.0;
+
+        if (decimate < 1.0) {
+            int prim = gl_PrimitiveID;
+            float r  = rand(prim);
+            if ( r > decimate) gl_FragColor.a = 0.0;
+        }
+
     }
     '''
-    
+
+    if not pyglet.gl.gl_info.have_version(3):
+        vertex_shader = '#define VERSION120 \n'+vertex_shader
+        fragment_shader = '#define VERSION120 \n'+fragment_shader
+
+
     # Class-wide parameters for all class instances
-    gamma =     Parameter(default=2.2, vmin=0.0, vmax=3.0, title='Gamma')
-    exposure =  Parameter(default=0.0, vmin=-2.0, vmax=2.0, title='Exposure')
-    gain =      Parameter(default=1.0, vmin=0.0, vmax=3.0, title='Gain')
-    hueoffset = Parameter(default=0.0, vmin=-1.0, vmax=1.0, title='Hue Offset')
-    ptsize =    Parameter(default=1.0, vmin=-1.0, vmax=1.0, title='Point Size')
+    gamma =     Parameter(2.2, vmin=0.0, vmax=3.0, title='Gamma')
+    exposure =  Parameter(0.0, vmin=-2.0, vmax=2.0, title='Exposure')
+    gain =      Parameter(1.0, vmin=0.0, vmax=3.0, title='Gain')
+    hueoffset = Parameter(0.0, vmin=-1.0, vmax=1.0, title='Hue Offset')
+    ptsize =    Parameter(2.0, vmin=-1.0, vmax=1.0, title='Point Size')
+
+    # OpenGL Vertex Buffer management
+    def init_buffers(self):
+        self.vbo_vert_id = GLuint()
+        self.vbo_col_id = GLuint()
+        glGenBuffers(1, pointer(self.vbo_vert_id))
+        glGenBuffers(1, pointer(self.vbo_col_id))
 
     def update_buffers(self):
         self.vbo_vert_data = self.verts.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -138,41 +162,57 @@ class Ptc(Object3d):
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_col_id)
         glBufferData(GL_ARRAY_BUFFER, sizeof(ctypes.c_float)*len(self.cols), self.vbo_col_data, GL_STATIC_DRAW)
 
-    def __init__(self, scene, filename, *args, **kwargs):
+    def delete_buffers(self):
+        glDeleteBuffers(1, self.vbo_vert_id)
+        glDeleteBuffers(1, self.vbo_col_id)
+
+    def update_visibility(self):
+        if self.visible.value == False:
+            self.delete_buffers()
+        elif self.visible.value == True:
+            if not glIsBuffer(self.vbo_vert_id) and not glIsBuffer(self.vbo_col_id):
+                self.init_buffers()
+            self.update_buffers()
+
+
+    def __init__(self, scene, filepath, *args, **kwargs):
         super(Ptc, self).__init__(scene, *args, **kwargs)
 
-        self.filename = filename
+        self.visible = Parameter(True, title='Visible', update=self.update_visibility)
+        self.filepath = filepath
+        self.filename = ''  # after frame conversion
         self.frame = None
         self.vbo_vert_data = None
         self.vbo_col_data = None
-
+        
         # load ptc, store in self.verts/self.cols
-        self.update(scene.time, scene.frame.getval())
+        self.update(scene.time, scene.frame.value)
 
         # create and fill vertex buffers
-        self.vbo_vert_id = GLuint()
-        self.vbo_col_id = GLuint()
-        glGenBuffers(1, pointer(self.vbo_vert_id))
-        glGenBuffers(1, pointer(self.vbo_col_id))
+        self.init_buffers()
         self.update_buffers()
+
+        self.decimate = Parameter(1.0, vmin=0.0, vmax=1.0, title='Decimate')
         
 
     def update(self, time, frame, dt=0):
+        """Read point cloud data into numpy arrays """
         frame = int(frame)
-        if self.frame == frame: 
-            return
 
         self.frame = frame
-        filename = self.filename.replace('####', '%04d' % self.frame)
+        filename = self.filepath.replace('####', '%04d' % self.frame)
+        if self.filename == filename:
+            return
+            
+        self.filename = filename
 
         ptc = partio.read(filename)
-        if ptc is None:
-            return
-
-        #print('read ptc %s' % filename)
+        if ptc is None: return
 
         self.numparts = ptc.numParticles()
-        attrs = dict((ptc.attributeInfo(i).name,ptc.attributeInfo(i)) for i in range(ptc.numAttributes()))
+        attrs = {}
+        for i in range(ptc.numAttributes()):
+            attrs[ptc.attributeInfo(i).name] = ptc.attributeInfo(i)
 
         posattr = ptc.attributeInfo(0)
         if 'Cd' in attrs.keys():
@@ -180,7 +220,7 @@ class Ptc(Object3d):
         elif '_radiosity' in attrs.keys():
             colattr = attrs['_radiosity']
 
-        # loat position and colour data
+        # load position and colour data
         if hasattr(ptc, "getNDArray"):
             # using an addition to partio py api
             self.verts = ptc.getNDArray(posattr)
@@ -192,6 +232,7 @@ class Ptc(Object3d):
         else:
             self.verts = np.array([ ptc.get(posattr, i) for i in range(numparts)])
             self.cols =  self.verts([ ptc.get(colattr, i) for i in range(numparts)])
+        del ptc
 
         # calculate bbox min and max
         v = self.verts.reshape(-1,3)
@@ -240,14 +281,21 @@ class Ptc(Object3d):
         return Vector3(*l)
 
     def draw(self, time=0, camera=None):
+        if not self.visible.value:
+            return
+
         # stupid rotate_euler taking coords out of order!
         m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
 
-        glPointSize(self.ptsize.getval())
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+        glPointSize(self.ptsize.value)
         self.shader.bind()
-        self.shader.uniformf('gamma', self.gamma.getval())
-        self.shader.uniformf('exposure', self.exposure.getval())
-        self.shader.uniformf('hueoffset', self.hueoffset.getval())
+        self.shader.uniformf('gamma', self.gamma.value)
+        self.shader.uniformf('exposure', self.exposure.value)
+        self.shader.uniformf('hueoffset', self.hueoffset.value)
+        self.shader.uniformf('decimate', self.decimate.value)
         self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
@@ -266,3 +314,5 @@ class Ptc(Object3d):
 
         # self.batch.draw()
         self.shader.unbind()
+
+        glDisable(GL_BLEND)
