@@ -25,7 +25,7 @@
 
 import pyglet
 # Disable error checking for increased performance
-pyglet.options['debug_gl'] = False
+pyglet.options['debug_gl'] = True
 #pyglet.options['debug_graphics_batch'] = True
 #pyglet.options['debug_gl_trace'] = True
 #pyglet.options['debug_gl_trace_args'] = True
@@ -42,7 +42,7 @@ def init():
     
     def setup():
         # One-time GL setup
-        glClearColor(0.4, 0.4, 0.4, 1)
+        glClearColor(0.35, 0.35, 0.35, 1)
 
     window = pyglet.window.Window(900, 400, resizable=True)
     scene = Scene()
@@ -50,7 +50,7 @@ def init():
     pyglet.clock.schedule(scene.update)
     
     setup()
-
+ 
     ui = ui2d.Ui(window, layoutw=0.2)
     ui.control_types['numeric'] += [Point3, Vector3]
     ui.control_types['color'] +=  [Color3]
@@ -64,22 +64,31 @@ def init():
     for filename in sys.argv[1:]:
         pointcloud = Ptc(scene, filename)
         scene.pointclouds.append( pointcloud )
-        ui.layout.addControl(ui, func=scene.camera.focus, argslist=[pointcloud], title=filename[-18:])
+        layout = ui.layout.addLayout(bg=True)
+        layout.addParameter(ui, pointcloud.visible, title=filename)
+        layout.addLabel(ui, title='%d pts'%pointcloud.numparts)
+        layout.addParameter(ui, pointcloud.decimate)
+        layout.addControl(ui, object=pointcloud, attr="translate")
+
+        ui.layout.addLabel(ui, title=' ') # Separator
+        
     ptch = ptc.PtcHandler(scene, window)
     scene.calculate_bounds()
     scene.camera.focus(scene)
 
+    layout = ui.layout.addLayout(bg=True)
     # ptc class variables, global
-    ui.layout.addParameter(ui, Ptc.ptsize)
-    ui.layout.addParameter(ui, Ptc.gamma)
-    ui.layout.addParameter(ui, Ptc.exposure)
-    ui.layout.addParameter(ui, Ptc.hueoffset)
+    layout.addParameter(ui, Ptc.ptsize)
+    layout.addParameter(ui, Ptc.gamma)
+    layout.addParameter(ui, Ptc.exposure)
+    layout.addParameter(ui, Ptc.hueoffset)
+    
+    #scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)
+    #layout.addParameter(ui, scene.camera.fieldofview)
+    layout.addParameter(ui, scene.frame)
+    #ui.layout.print_r()
 
-
-
-    scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)
-    ui.layout.addParameter(ui, scene.camera.fieldofview)
-    ui.layout.addParameter(ui, scene.frame)
+    
 
     # Event handlers
     window.push_handlers(scene)
