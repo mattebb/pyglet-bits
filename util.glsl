@@ -21,6 +21,23 @@
 *
 */
 
+#extension GL_EXT_gpu_shader4 : enable
+
+#ifdef VERSION120
+float rand(in int n){
+	vec2 co = vec2(float(n), float(n)+12345.012);
+    return fract(sin(dot(co.xy , vec2(12.9898,78.233))) * 43758.5453);
+}
+#endif
+#ifdef VERSION330
+float rand(in int n)
+{
+	// http://www.geeks3d.com/20100831/shader-library-noise-and-pseudo-random-number-generator-in-glsl/
+	// <<, ^ and & require GL_EXT_gpu_shader4.
+	n = (n << 13) ^ n; 
+	return ((n * (n*n *15731+789221) + 1376312589) & 0x7fffffff)/(2.0*1073741824.0);
+}
+#endif
 
 float exp_blender(float f)
 {
