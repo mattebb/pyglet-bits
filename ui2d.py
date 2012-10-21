@@ -102,8 +102,11 @@ class UiEventHandler(object):
         if not self.ui.overlay:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        for control in [c for c in self.ui.controls if hasattr(c, "param") and c.param.needs_redraw == True]:
-            control.reposition()
+        for control in [c for c in self.ui.controls if hasattr(c, "param") and c.param is not None]:
+            if control.param.needs_redraw:
+                control.update()
+                control.param.needs_redraw = False
+
 
         self.ui.batch.draw()
         self.ui.fps_display.draw()
@@ -136,7 +139,8 @@ class UiEventHandler(object):
             return control.on_key_press(symbol, modifiers)
     
     def on_resize(self, width, height):
-        self.ui.layout.reposition(w=width, y=height)
+        self.ui.layout.w = width
+        self.ui.layout.y = height
         self.ui.layout.layout()
 
 def attr_len(attr):
@@ -146,100 +150,6 @@ def attr_len(attr):
     else:
         return 1
 
-class UiLayout(object):
-    
-    VERTICAL = 1
-    HORIZONTAL = 2
-    CONTROL = 3
-
-    HEIGHT = 16
-    
-    def __init__(self, x=10, y=200, w=300, wf=1.0, style=VERTICAL):
-        self.style = style
-        self.items = []
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = 16
-        self.wf = wf
-    
-    def reposition(self, x=None, y=None, w=None, h=None, wf=None):
-        if x is not None:
-            self.x = x
-        if y is not None:
-            self.y = y
-        if w is not None:
-            self.w = w
-        if wf is not None:
-            self.wf = wf
-    
-    def layout(self, items=None):
-        if items is None:
-            items = self.items
-            
-        y = self.y
-        x = self.x
-        w = self.w * self.wf
-
-        for i, item in enumerate(items):
-            item.x = x
-            item.y = y - item.h - 2
-            #item.h = self.HEIGHT
-            
-            if self.style == self.VERTICAL:
-                item.w = w
-                y = item.y
-                #y -= item.h + 2
-            elif self.style == self.HORIZONTAL:
-                item.w = w / len(items)
-                x += item.w
-
-            if type(item) == UiLayout:
-                item.layout(item.items)
-            
-            item.reposition()
-    
-    def addParameter(self, ui, param, ptype=None):
-        if ptype is not None:
-            controltype = ptype
-        elif param.type in ui.control_types['numeric']:
-            controltype = NumericControl
-        elif param.type in ui.control_types['toggle']:
-            controltype = ToggleControl
-        elif param.type in ui.control_types['color']:
-            controltype = ColorSwatch
-
-        control = controltype(ui, param=param, vmin=param.min, vmax=param.max)
-        self.items.append(control)
-        ui.controls.append(control)
-
-        self.layout()
-
-    def addControl(self, ui, **kwargs):
-        
-        # detect ui control type and length
-        
-        # attribute controls
-        if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
-            attr = getattr( kwargs['object'], kwargs['attr'])
-            
-            if type(attr) in ui.control_types['numeric']:
-                controltype = NumericControl
-                
-            elif type(attr) in ui.control_types['toggle']:
-                controltype = ToggleControl
-
-            control = controltype(ui, **kwargs)
-            self.items.append(control)
-            ui.controls.append(control)
-
-        # action control
-        elif 'func' in kwargs.keys():
-            control = ActionControl(ui, **kwargs)
-            self.items.append(control)
-            ui.controls.append(control)
-        
-        self.layout()
 
 class Ui(object):
 
@@ -265,7 +175,7 @@ class Ui(object):
 
         self.fps_display = pyglet.clock.ClockDisplay()
         ww, wh = self.window.get_size()
-        self.layout = UiLayout(x=10, y=wh, w=ww, wf=layoutw )
+        self.layout = UiLayout(self, y=wh, w=ww, wf=layoutw, pad=10)
         
         self.handler = UiEventHandler(window, self)
         window.push_handlers( self.handler )
@@ -273,6 +183,13 @@ class Ui(object):
     def update(self):
         for control in self.controls:
             control.update()
+
+def set_from_kwargs(ob, args, kwargs):
+    print(kwargs)
+    for key, value in kwargs.items():
+        print(key, value)
+        if key in args:
+            setattr(ob, key, value)
 
 class UiControl(object):
 
@@ -283,8 +200,7 @@ class UiControl(object):
         self.y = y
         self.w = w
         self.h = h
-        self.type = type
-        
+
         self.active = False
 
         self.ui = ui
@@ -295,7 +211,7 @@ class UiControl(object):
         self.label = pyglet.text.Label(self.title,
                         batch=ui.batch,
                         group=ui.groups['label'],
-                        x=0, y=0,
+                        x=0, y=0, width=self.w, height=self.h,
                         **UiControls.font_style )
 
     def add_shape_geo(self, shapegeo):
@@ -347,14 +263,18 @@ class UiControl(object):
             v.delete()
     
     # override in subclasses
-    def update_label(self):
+    def position_label(self):
         self.label.anchor_y = 'baseline'
-        self.label.x = self.x+8
+        self.label.x = self.x
         self.label.y = self.y+4
-        self.label.height = self.h
+
+        self.label.text = self.title
+        if self.w > 10:
+            while self.label.content_width > self.w - 14:
+                self.label.text = self.label.text[1:]
 
     def reposition(self):
-        self.update_label()
+        self.position_label()
         self.update()
 
     def update(self):
@@ -385,6 +305,163 @@ class UiControl(object):
         self.update()
         
 
+class UiLayout(UiControl):
+    
+    VERTICAL = 1
+    HORIZONTAL = 2
+    CONTROL = 3
+
+    HEIGHT = 16
+    PADDING = 2
+    
+    def __init__(self, ui, x=0, y=3, w=0, wf=1.0, pad=0, bg=False, style=VERTICAL, **kwargs):
+        super(UiLayout, self).__init__( ui, **kwargs )
+        self.style = style
+        self.items = []
+        self.x = x
+
+        #print((**kwargs)
+
+        # XXX: Check me
+        #self.y = y
+        #self.w = w
+        #set_from_kwargs(self, ('bg', 'w'), kwargs)
+        #print(self.y)
+
+        self.h = 0
+        self.pad = pad
+        self.wf = wf
+        self.title = 'uiLayout'
+        self.bg = bg
+    
+    def reposition(self):
+        for item in self.items:
+            item.reposition()
+    
+    def print_r(self, indent=0):
+        print('-   '*indent + self.title +' - x: %d  y: %d  w: %d  h: %d' % (self.x,self.y,self.w,self.h))
+        
+        for item in self.items:
+            
+            if type(item) == UiLayout:
+                item.print_r(indent=indent+1)
+            else:
+                print('  -    '*indent + item.title.ljust(20) +' x: %d  y: %d  w: %d  h: %d' % (item.x,item.y,item.w,item.h))
+
+    def layout(self):
+        self.h = 0
+        y = self.y - self.pad
+        x = self.x + self.pad
+        self.w *= self.wf
+        w = self.w
+
+        for item in self.items:
+            item.w = w
+            if type(item) == UiLayout:
+                item.y = y
+                item.layout()
+
+            y -= item.h + self.PADDING
+            item.y = y
+            item.x = x
+            
+        self.h = self.y - y
+        self.y = y
+
+        self.update()
+        self.reposition()
+    
+    def update(self):
+        if self.bg == False: return
+
+        col = [0.5,0.5,0.5,0.7]
+        outline_col = [.2,.2,.2, 0.3]
+
+        x = self.x+self.pad - 4
+        w = self.w + 8
+        y = self.y-self.pad - 4
+        h = self.h + 8
+        self.add_shape_geo( roundbase(x, y, w, h, 3, col, col) )
+        self.add_shape_geo( roundoutline(x, y, w, h, 3, outline_col) )
+        
+
+    def addLayout(self, **kwargs):
+        layout = UiLayout(self.ui, **kwargs)
+        self.items.append(layout)
+        self.layout()
+        return layout
+
+    def addParameter(self, ui, param, ptype=None, **kwargs):
+        if type(param) != parameter.Parameter:
+            raise AttributeError('Not a Parameter object')
+
+        if ptype is not None:
+            controltype = ptype
+        elif param.type in ui.control_types['numeric']:
+            controltype = NumericControl
+        elif param.type in ui.control_types['toggle']:
+            controltype = ToggleControl
+        elif param.type in ui.control_types['color']:
+            controltype = ColorSwatch
+
+        control = controltype(ui, param=param, vmin=param.min, vmax=param.max, **kwargs)
+        self.items.append(control)
+        ui.controls.append(control)
+        self.layout()
+
+    def addLabel(self, ui, **kwargs):
+        control = LabelControl(ui, **kwargs)
+        self.items.append(control)
+        ui.controls.append(control)
+        self.layout()
+
+    def addControl(self, ui, **kwargs):
+        
+        # detect ui control type and length
+        
+        # attribute controls
+        if 'object' in kwargs.keys() and 'attr' in kwargs.keys():
+            attr = getattr( kwargs['object'], kwargs['attr'])
+            
+            if type(attr) in ui.control_types['numeric']:
+                controltype = NumericControl
+                
+            elif type(attr) in ui.control_types['toggle']:
+                controltype = ToggleControl
+
+            control = controltype(ui, **kwargs)
+            self.items.append(control)
+            ui.controls.append(control)
+
+        # action control
+        elif 'func' in kwargs.keys():
+            control = ActionControl(ui, **kwargs)
+            self.items.append(control)
+            ui.controls.append(control)
+        
+        self.layout()
+
+class UiAttrSequence(object):
+    def __getitem__(self, key):
+        at = getattr(self.object, self.attr)
+
+        if hasattr(at, "__getitem__"):
+            return at.__getitem__(key)
+        else:
+            return at
+
+    def __setitem__(self, key, value):
+        at = getattr(self.object, self.attr)
+
+        if hasattr(at, "__setitem__"):
+            return at.__setitem__(key, value)
+        else:
+            return setattr(self.object, self.attr, value)
+
+    def __init__(self, object, attr):
+        self.object = object
+        self.attr = attr
+
 class UiAttrControl(UiControl):
     
     def __init__(self, ui, param=None, object=None, attr='', vmin=0, vmax=100, subtype=None, **kwargs):
@@ -405,43 +482,22 @@ class UiAttrControl(UiControl):
         else:
             raise ValueError("Invalid attribute provided: %s" % attr)
 
+        if param is not None:
+            self.values = UiAttrSequence(self.param.param_storage, "data")
+        else:
+            self.values = UiAttrSequence(self.object, self.attr)
+        
         self.min = vmin
         self.max = vmax
         self.subtype = subtype
         
         self.label.text = self.title
-
-    def getval(self, sub=None):
-        # Parameter interface
-        if self.param is not None:
-            return self.param.getval(sub=sub)
-
-        # or modify attribute values directly
-        attr = getattr(self.object, self.attr)
-        if self.len > 1 and sub is not None:
-            return attr[sub]
-        else:
-            return attr
     
     def limited(self, val, newval):
         if type(val) in ('float', 'int'):
             return min(self.max, max(self.min, newval))
         else:
             return newval
-    
-    def setval(self, newval, sub=None):
-        # Parameter interface
-        if self.param is not None:
-            return self.param.setval(newval, sub=sub)
-
-        # or modify attribute values directly
-        attr = getattr(self.object, self.attr)
-        if self.len > 1 and sub is not None:
-            attr[sub] = self.limited( attr[sub], newval )
-        else:
-            attr = self.limited(attr, newval)
-        
-        setattr(self.object, self.attr, attr)
 
 
 class UiTextEditControl(UiAttrControl):
@@ -477,8 +533,8 @@ class UiTextEditControl(UiAttrControl):
 
         
         
-    def update_label(self):
-        super(UiTextEditControl, self).update_label()
+    def position_label(self):
+        super(UiTextEditControl, self).position_label()
         
         for i, layout in enumerate(self.layouts):
             w = self.w*(1-self.LABELSIZE) / float(len(self.layouts))
@@ -491,7 +547,7 @@ class UiTextEditControl(UiAttrControl):
         
         self.label.width = self.w
         self.label.anchor_x = 'left'
-        self.label.x = self.x + 8
+        self.label.x = self.x
         
     
     def val_from_text(self):
@@ -500,18 +556,16 @@ class UiTextEditControl(UiAttrControl):
                 val = float(doc.text)
                 if self.subtype == UiControls.ANGLE:
                     val = math.radians(val)
-                self.setval(val, sub=i)
+                self.values[i] = val
             except:
                 pass
 
     def text_from_val(self):
         for i, doc in enumerate(self.documents):
-            val = self.getval(sub=i)
-            
             if self.subtype == UiControls.ANGLE:
-                doc.text = u"%.2f\xB0" % math.degrees(val) 
+                doc.text = u"%.2f\xB0" % math.degrees(self.values[i]) 
             else:
-                doc.text = "%.2f" % val
+                doc.text = "%.2f" % self.values[i]
 
     def textedit_begin(self, s=0):
         self.activate()
@@ -553,13 +607,16 @@ class ToggleControl(UiAttrControl):
     CHECKBOX_W = 10
     CHECKBOX_H = 10
     
-    def update_label(self):
-        super(ToggleControl, self).update_label()
+    def position_label(self):
+        self.label.width = self.w - (self.CHECKBOX_W + 8)
+
+        super(ToggleControl, self).position_label()
+
         self.label.x = self.x + self.CHECKBOX_W + 8
 
     def update(self):
         
-        if self.getval():
+        if self.values[0]:
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
             coltext = [255]*4
@@ -592,7 +649,7 @@ class ToggleControl(UiAttrControl):
             self.deactivate()
     
     def toggle(self):
-        self.setval( not self.getval() )
+        self.values[0] = not self.values[0]
         self.update()
 
 class PickerWindow(pyglet.window.Window):
@@ -606,8 +663,8 @@ class PickerWindow(pyglet.window.Window):
         self.ui = Ui(self, overlay=False)
         self.ui.layout.x = 0
         self.ui.layout.wf = 1.0
-        self.ui.layout.addParameter(self.ui, self.param, type=ColorWheel)
-        self.ui.layout.addParameter(self.ui, self.param, type=NumericControl)
+        self.ui.layout.addParameter(self.ui, self.param, ptype=ColorWheel)
+        self.ui.layout.addParameter(self.ui, self.param, ptype=NumericControl)
 
         glClearColor(0.4, 0.4, 0.4, 1.0)
 
@@ -615,7 +672,8 @@ class PickerWindow(pyglet.window.Window):
         glViewport(0, 0, width, height)
         
         if hasattr(self, "ui"):
-            self.ui.layout.reposition(w=width, y=height)
+            self.ui.layout.w = width
+            self.ui.layout.y = height
             self.ui.layout.layout()
 
     def update_picker(self):
@@ -662,13 +720,13 @@ class ColorWheel(UiAttrControl):
         self.h = 128
 
     def update(self):
-        col = self.getval()[:]
+        col = self.values[:]
         h, s, v = colorsys.rgb_to_hsv(*col)
 
         self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h, v) )
 
     def set_color(self, x, y):
-        col = self.getval()[:]
+        col = self.values[:]
         hue, sat, val = colorsys.rgb_to_hsv(*col)
 
         r = float(self.h * 0.5)
@@ -684,7 +742,7 @@ class ColorWheel(UiAttrControl):
 
         rgb = parameter.Color3(*colorsys.hsv_to_rgb(h, s, val))
 
-        self.setval(rgb)
+        self.values[:] = rgb
         
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
@@ -698,8 +756,7 @@ class ColorWheel(UiAttrControl):
 class ColorSwatch(UiAttrControl):
 
     def update(self):
-        col = list(self.getval())
-        col = col + [1.0]
+        col = list(self.values) + [1.0]
         outline_col = [.2,.2,.2, 1.0]
 
         w = self.w*(1-self.LABELSIZE)
@@ -749,6 +806,8 @@ class NumericControl(UiTextEditControl):
         return None
 
     def update(self):
+        self.text_from_val()
+        
         w = (self.w*(1-self.LABELSIZE)) / float(self.len)
         for i in range(self.len):
             if self.active and (self.textediting == i or self.sliding == i):
@@ -805,7 +864,7 @@ class NumericControl(UiTextEditControl):
 
     def on_mouse_drag_setval(self, dx):
         sensitivity = (self.max - self.min) / 500.0
-        self.setval( self.getval(sub=self.sliding) + sensitivity*dx, sub=self.sliding )
+        self.values[self.sliding] += + sensitivity*dx   # XXX
         self.text_from_val()
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
@@ -838,14 +897,13 @@ class ActionControl(UiControl):
         self.label.text = self.title
         
     
-    def update_label(self):
-        super(ActionControl, self).update_label()
+    def position_label(self):
+        super(ActionControl, self).position_label()
         self.label.anchor_x = 'center'
         self.label.x = self.x + self.w//2
         
 
     def update(self):
-        
         if self.active:
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
@@ -856,7 +914,7 @@ class ActionControl(UiControl):
             col2 = [0.6]*3 + [1.0]
             outline_col = [.25,.25,.25, 1.0]
             coltext = [0,0,0,255]
-            
+
         self.add_shape_geo( roundbase(self.x, self.y, self.w, self.h, 6, col1, col2) )
         self.add_shape_geo( roundoutline(self.x, self.y, self.w, self.h, 6, outline_col) )
         self.label.color = coltext
@@ -872,6 +930,14 @@ class ActionControl(UiControl):
 
 class LabelControl(UiControl):
     def __init__(self, ui, title='', **kwargs):
-        self.title = title
         super(LabelControl, self).__init__( ui, **kwargs )
+        self.title = title
+        
     
+    # def update(self):
+    #     super(LabelControl, self).update()
+    #     self.label.text = self.title
+    #     if self.w > 10:
+    #         while self.label.content_width > self.w:
+    #             self.label.text = self.label.text[:-1]
+    # 
