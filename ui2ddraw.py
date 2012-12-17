@@ -60,7 +60,7 @@ def strip_fix(sequence, size):
 def fit(v, mi, mx):
     return (v  * (mx-mi)) + mi
 
-def round_strip(x, y, w, h, r):
+def round_strip(x, y, w, h, r, corners='0123'):
     geo = []
     rsteps = 2      # radial divisions
     ch = h - 2*r    # central area height
@@ -75,16 +75,24 @@ def round_strip(x, y, w, h, r):
             geo += [x, r+y+ch,   x+w, r+y+ch]
         else:
             # rounded edges
-            x2 = cos(theta)*r
-            y0 = sin(theta)*r + r
-            x1 = r - x2
+            ct = cos(theta)
+
             if i > 0:
+                x2 = ct*r if '1' in corners else r
+                x1 = r*(1-ct) if '0' in corners else 0
+                
+                y0 = sin(theta)*r + r                
                 y0 += ch
+            else:
+                x2 = ct*r if '2' in corners else r
+                x1 = r*(1-ct) if '3' in corners else 0
+                y0 = sin(theta)*r + r
+
             geo += [x1+x, y0+y,  x2+x+w-r, y0+y]
     return geo
     
-def roundbase(x, y, w, h, r, col1, col2, index=0):
-    geo = round_strip(x,y,w,h,r)
+def roundbase(x, y, w, h, r, col1, col2, index=0, corners='0123'):
+    geo = round_strip(x,y,w,h,r,corners)
     geo = strip_fix(geo, 2)
     
     # generate uv v coord from vertex y height
@@ -106,8 +114,8 @@ def roundbase(x, y, w, h, r, col1, col2, index=0):
             }
     
 
-def roundoutline(x, y, w, h, r, col, index=0):
-    geo = round_strip(x, y, w, h, r)
+def roundoutline(x, y, w, h, r, col, index=0, corners='0123'):
+    geo = round_strip(x, y, w, h, r, corners=corners)
     garray = np.array( geo ).reshape(-1,2)
 
     # re-arrange quad strip vertex list into a loop
