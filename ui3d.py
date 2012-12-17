@@ -64,22 +64,26 @@ class Cross(object):
 
 
 class Grid(object):
-    def __init__(self, radius, divisions, batch, group=None):
+    def __init__(self, radius, divisions, batch, center=(0,0,0), group=None):
         
         vertices = []
         idiv = 1.0 / float(divisions)
+        cx = center[0]
+        cy = center[1]
+        cz = center[2]
+
         for x in range(-divisions, divisions+1):
             xc = x*idiv*radius
-            vertices += [xc, 0, -radius]
-            vertices += [xc, 0, radius]
+            vertices += [xc+cx, cy, -radius+cz]
+            vertices += [xc+cx, cy, radius+cz]
             
         
         for z in range(-divisions, divisions+1):
             zc = z*idiv*radius
-            vertices += [-radius, 0, zc]
-            vertices += [radius, 0, zc]
+            vertices += [-radius+cx, cy, zc+cz]
+            vertices += [radius+cx, cy, zc+cz]
     
-        colors = [0.3,0.3,0.3,1.0]*(len(vertices)//3)
+        colors = [0.28,0.28,0.28,1.0]*(len(vertices)//3)
 
 
         #from ui2ddraw import aajitter
