@@ -38,6 +38,7 @@ def attr_len(attr):
     else:
         return 1
 
+
 class ParameterStorage(object):
     def __init__(self, default):
         self.data = default
@@ -46,7 +47,7 @@ class Parameter(object):
     INTERNAL = 0
     EXTERNAL = 1
     
-    def __init__(self, default=None, object=None, attr='', update=None, title='', vmin=0.0, vmax=1.0):
+    def __init__(self, object=None, attr='', enum=None, subtype=None, update=None, title='', default=None, vmin=0.0, vmax=1.0):
 
         if object != None and attr != '':
             if not hasattr(object, attr):
@@ -55,76 +56,75 @@ class Parameter(object):
             self.object = object
             self.attr = attr
             self.title = self.attr.capitalize()
+            self.type = type(getattr(self.object, self.attr))
         else:
             self.storage = self.INTERNAL
             self.param_storage = ParameterStorage(default)
             self.object = self.param_storage
             self.attr = "data"
             self.title = title
-            self.values = pv(self.param_storage.data)
+            self.type = type(self.param_storage.data)
 
         self.min = vmin
         self.max = vmax
+        self.enum = enum
+        self.subtype = subtype
 
         self.update = update
 
         self.len = attr_len(getattr(self.object, self.attr))
-        self.type = type(getattr(self.object, self.attr))
-
+        
         self.needs_redraw = False
 
+    def getval(self, sub=None):
+        attr = getattr(self.object, self.attr)
+        
+        if self.len > 1 and sub is not None:
+            return attr[sub]
+        else:
+            return attr
+    
     def limited(self, val, newval):
         if type(val) in ('float', 'int'):
             return min(self.max, max(self.min, newval))
         else:
             return newval
+    
+    def setval(self, newval, sub=None):
+        attr = getattr(self.object, self.attr)
 
-    @property
-    def value(self):
-        return getattr(self.object, self.attr)
-    @value.setter
-    def value(self, value):
-        setattr(self.object, self.attr, value)
+        if self.len > 1 and sub is not None:
+            attr[sub] = self.limited( attr[sub], newval )
+        else:
+            attr = self.limited(attr, newval)
+        
+        self.needs_redraw = True
+
+        setattr(self.object, self.attr, attr)
+        
+        if self.update is not None:
+            self.update()
+'''
+    #def __get__(self, instance, owner):
+    #    return instance
+
+    # def __getattribute__(self, name):
+    #     if name == 'param':
+    #         return self
+    #     else:
+    #         return self.__dict__[name]
 
     # @property
-    # def values(self):
-    #     attr = self.value
-    #     if hasattr(attr, "__getitem__"):
-    #         return attr
-    #     else:
-    #         return [attr]
+    # def val(self):
+    #     return self.getval()
 
-    # @values.setter
-    # def values(self, value):
-    #     attr = self.value
-    #     if hasattr(attr, "__getitem__"):
-    #         return attr[:]
-    #     else:
-    #         return attr = value
-    #     setattr(self.object, self.attr, value)
+    # @val.setter
+    # def setv(self, value):
+    #     self.setval(value)
 
-    #def __getitem__(self, key):
-    #    return float(key) + 0.01
+    # def __getitem__(self, key):
+    #     return self.getval(sub=key)
 
-class pv(object):
-
-    def __getitem__(self, key):
-        if hasattr(self.data, "__getitem__"):
-            return self.data.__getitem__(key)
-        else:
-            return self.single_getitem(key)
-
-    def __setitem__(self, key, value):
-        if hasattr(self.data, "__setitem__"):
-            return self.data.__setitem__(key, value)
-        else:
-            return self.single_setitem(key, value)
-
-    def __init__(self, d):
-        self.data = d
-
-    def single_getitem(self, key):
-        return self.data
-
-    def single_setitem(self, key, value):
-        self.data = value
+    # def __setitem__(self, key, value):
+    #     self.setval(value, sub=key)
+'''
