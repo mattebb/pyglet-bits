@@ -25,31 +25,31 @@
 
 import pyglet
 # Disable error checking for increased performance
-pyglet.options['debug_gl'] = True
+pyglet.options['debug_gl'] = False
 #pyglet.options['debug_graphics_batch'] = True
 #pyglet.options['debug_gl_trace'] = True
 #pyglet.options['debug_gl_trace_args'] = True
 from pyglet.gl import *
 
-def init(): 
+def init():
+    
     from euclid import Vector3, Point3, Matrix4
 
     import ui2d
 
     from parameter import Parameter, Color3
     from camera import Camera
-    from object3d import Scene
-    
-    def setup():
-        # One-time GL setup
-        glClearColor(0.35, 0.35, 0.35, 1)
+    from object3d import Scene, filename_frame
+    import os
+    import sys
 
     window = pyglet.window.Window(900, 400, resizable=True)
+
     scene = Scene()
     scene.camera = Camera(window)
     pyglet.clock.schedule(scene.update)
     
-    setup()
+    glClearColor(0.32, 0.32, 0.32, 1)
  
     ui = ui2d.Ui(window, layoutw=0.2)
     ui.control_types['numeric'] += [Point3, Vector3]
@@ -58,7 +58,34 @@ def init():
     # load ptc objects from cmd line
     import ptc
     from ptc import Ptc
-    import sys
+    
+
+    # find first frame of sequences
+    maxframe = 0
+    minframe = 9999999999
+
+    for filename in sys.argv[1:]:
+        seeking = False
+        for i in xrange(10000):
+            fi = filename_frame(filename, i)
+            if ptc.valid_file(fi):
+                seeking = True
+                if i < minframe:
+                    minframe = i
+                #break
+            else:
+                if seeking:
+                    if i > maxframe:
+                        maxframe = i
+                    seeking = False
+                    break
+
+    
+
+    scene.sframe = minframe
+    scene.eframe = maxframe
+    print('min frame', scene.sframe, 'max frame', scene.eframe)
+    scene.frame.setval( minframe )
 
     scene.pointclouds = []
     for filename in sys.argv[1:]:
@@ -66,12 +93,18 @@ def init():
         scene.pointclouds.append( pointcloud )
         layout = ui.layout.addLayout(bg=True)
         layout.addParameter(ui, pointcloud.visible, title=filename)
-        layout.addLabel(ui, title='%d pts'%pointcloud.numparts)
+        
         layout.addParameter(ui, pointcloud.decimate)
-        layout.addControl(ui, object=pointcloud, attr="translate")
+        layout.addLabel(ui, param=pointcloud.num_particles)
+        
+        layout.addLabel(ui, title=' ') # Separator
+
+        layout.addParameter(ui, pointcloud.attributes)
+        layout.addLabel(ui, param=pointcloud.attr_stats)
+        #layout.addParameter(ui, pointcloud.translate)
 
         ui.layout.addLabel(ui, title=' ') # Separator
-        
+    
     ptch = ptc.PtcHandler(scene, window)
     scene.calculate_bounds()
     scene.camera.focus(scene)
@@ -83,8 +116,13 @@ def init():
     layout.addParameter(ui, Ptc.exposure)
     layout.addParameter(ui, Ptc.hueoffset)
     
-    #scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", update=scene.camera.update_projection, vmin=5, vmax=150)
-    #layout.addParameter(ui, scene.camera.fieldofview)
+    scene.camera.fieldofview = Parameter(object=scene.camera, attr="fov", subtype=ui2d.UiControls.ANGLE, update=scene.camera.update_projection, vmin=0.087, vmax=2.618)
+    layout.addParameter(ui, scene.camera.fieldofview)
+    
+    ui.layout.addLabel(ui, title=' ') # Separator
+
+    layout = ui.layout.addLayout(bg=True)
+    layout.addParameter(ui, scene.playback)
     layout.addParameter(ui, scene.frame)
     #ui.layout.print_r()
 
@@ -94,14 +132,7 @@ def init():
     window.push_handlers(scene)
     window.push_handlers(ptch)
 
-    pyglet.app.run()
-
-    # import cProfile
-    # cProfile.run('pyglet.app.run()', '/tmp/pyprof')
-    # import pstats
-    # stats = pstats.Stats('/tmp/pyprof')
-    # stats.sort_stats('time')
-    # stats.print_stats(50)
+    
 
     '''
     print 'INCOMING CALLERS:'
@@ -112,3 +143,12 @@ def init():
 
 if __name__ == "__main__":
     init()
+
+    pyglet.app.run()
+
+    # import cProfile
+    # cProfile.run('pyglet.app.run()', '/tmp/pyprof')
+    # import pstats
+    # stats = pstats.Stats('/tmp/pyprof')
+    # stats.sort_stats('cumulative')
+    # stats.print_stats(50)
