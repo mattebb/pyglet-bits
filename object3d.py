@@ -27,25 +27,24 @@ import numpy as np
 from euclid import Vector3, Point3, Matrix4
 import pyglet
 from pyglet import graphics
+from pyglet.window import mouse, key
 from pyglet.gl import *
 from shader import Shader
 import math
 from ui3d import Grid, Axes
 from parameter import Parameter, Color3
+from keys import keys
 
 glsl_util = ''.join(open('util.glsl').readlines())
 
-
-
+def filename_frame(filename, frame):
+    return filename.replace('####', '%04d' % frame)
+    
 class Scene(object):
     
     PAUSED = 0
     PLAYING = 1
-    PLAYING_REVERSE = 2
     
-    SKIP_FRAME = 0
-    EVERY_FRAME = 1
-
     vertex_shader = '''
     uniform mat4 modelview;
     uniform mat4 projection;
@@ -61,15 +60,18 @@ class Scene(object):
         self.objects = []
         self.camera = None
         
-        self.playback = self.PAUSED
-        self.playback_skip = self.EVERY_FRAME
+        self.playback = Parameter(default=self.PAUSED, enum=[('Play',self.PLAYING),('Pause',self.PAUSED)])
+        #self.playback = self.PLAYING
+        self.fps = 24.0
         self.time = 0   # in seconds?
-        self.frame = Parameter(default=891, vmin=0, vmax=100, title='Frame', update=self.update_time)
+        self.frame = Parameter(default=1, vmin=0, vmax=100, title='Frame', update=self.update_time)
+        self.sframe = 1
+        self.eframe = 100
 
         self.ui3d_shader = Shader(self.vertex_shader)
         self.ui3d_batch = pyglet.graphics.Batch()
 
-        self.grid = Grid(2, 6, self.ui3d_batch )
+        self.grid = Grid(10, 10, self.ui3d_batch )
         self.axes = Axes(0.5, self.ui3d_batch )
 
         self.bbmin = None
@@ -93,18 +95,30 @@ class Scene(object):
                     self.bbmax.y = max(ob.bbmax.y, self.bbmax.y)
                     self.bbmax.z = max(ob.bbmax.z, self.bbmax.z)
 
+                self.grid.delete()
+                del self.grid
+                diam = self.bbmax - self.bbmin
+                center = self.bbmin + diam*0.5
+                self.grid = Grid(10, 10, self.ui3d_batch, center=center[:])
+
 
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.H:
             self.calculate_bounds()
             self.camera.focus(self)
         if symbol == pyglet.window.key.RIGHT:
-            self.frame.setval( self.frame.value + 1 )
+            self.frame.setval( self.frame.getval() + 1 )
         if symbol == pyglet.window.key.LEFT:
-            self.frame.setval( self.frame.value - 1 )
-        if symbol == pyglet.window.key.P:
-            self.playback = self.PLAYING
+            self.frame.setval( self.frame.getval() - 1 )
 
+    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
+        if not (modifiers & pyglet.window.key.MOD_ALT or \
+                modifiers & pyglet.window.key.MOD_CTRL or \
+                modifiers & pyglet.window.key.MOD_SHIFT or \
+                keys[pyglet.window.key.SPACE]):
+            if buttons & mouse.LEFT:
+                self.frame.setval( self.frame.getval() + dx*0.05 )
+                return pyglet.event.EVENT_HANDLED
 
 
     def on_draw(self):
@@ -130,18 +144,20 @@ class Scene(object):
 
     def update_time(self):            
         for ob in self.objects:
-            ob.update(self.time, self.frame.value)
+            ob.update(self.time, self.frame.getval())
 
     def update(self, dt):
-        if self.playback == self.PLAYING:
-            if self.playback_skip == self.EVERY_FRAME:
-                self.frame.setval( self.frame.value + 1 )
-                self.time += (1/24.0)
-                self.update_time()
-            elif self.playback_skip == self.SKIP_FRAME:
-                self.time += dt
-                self.frame.setval( 891 + self.time * 24.0 )
-                self.update_time()
+        if self.playback.getval() == self.PLAYING:
+            #self.time += dt
+
+            # loop playback
+            #frame = self.time * self.fps
+            frame = self.frame.getval() + 1
+            if frame > self.eframe:
+                frame = self.sframe
+            self.frame.setval(frame)
+
+            self.update_time()
 
 
 
@@ -169,6 +185,10 @@ class Object3d(object):
         gl_FragColor = gl_Color * dot(L, normal);
     }
     '''
+
+    def matrix(self):
+        # stupid rotate_euler taking coords out of order!
+        return Matrix4.new_translate(*self.translate.getval()).rotate_euler(*self.rotate.getval().yzx).scale(*self.scale.getval())
 
     def transform_verts(self, verts, matrix):
         ''' Transform a numpy array of vertex positions by a matrix '''
@@ -209,9 +229,9 @@ class Object3d(object):
     def __init__(self, scene):
         self.batch = pyglet.graphics.Batch()
         
-        self.translate = Vector3(0,0,0)
-        self.rotate= Vector3(0,0,0)
-        self.scale= Vector3(1,1,1)
+        self.translate = Parameter(default=Vector3(0,0,0))
+        self.rotate= Parameter(default=Vector3(0,0,0))
+        self.scale= Parameter(default=Vector3(1,1,1))
         
         self.shader = Shader(self.vertex_shader, self.fragment_shader)
 
@@ -226,7 +246,7 @@ class Object3d(object):
 # XXX
 def myfunc():
     monkey = Raw(scene)
-    monkey.translate = testp.value[:]
+    monkey.translate = testp.getval()[:]
     ui.layout.addParameter(ui, monkey.color)
     #return 
     #return ui3d.Grid(2, 6, batch)
@@ -297,12 +317,11 @@ class Raw(Object3d):
         self.color = Parameter(default=Color3(0.9, 0.3, 0.4), vmin=0.0, vmax=1.0)
 
     def draw(self, time=0, camera=None):
-        # stupid rotate_euler taking coords out of order!
-        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
+        m = self.matrix()
 
         self.shader.bind()
         self.shader.uniformf('time', time)
-        self.shader.uniformf('color', *self.color.value)
+        self.shader.uniformf('color', *self.color.getval())
         self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
@@ -414,8 +433,7 @@ class Cube(Object3d):
                                              )
             
     def draw(self, time=0, camera=None):
-        # stupid rotate_euler taking coords out of order!
-        m = Matrix4.new_translate(*self.translate).rotate_euler(*self.rotate.yzx).scale(*self.scale)
+        m = self.matrix()
 
         self.shader.bind()
         self.shader.uniformf('time', time)
