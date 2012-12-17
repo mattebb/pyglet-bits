@@ -102,10 +102,12 @@ class UiEventHandler(object):
         if not self.ui.overlay:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        for control in [c for c in self.ui.controls if hasattr(c, "param") and c.param is not None]:
-            if control.param.needs_redraw:
-                control.update()
-                control.param.needs_redraw = False
+        def needs_redraw(ctrl):
+            return hasattr(ctrl, "param") and ctrl.param is not None and ctrl.param.needs_redraw == True
+
+        for control in [c for c in self.ui.controls if needs_redraw(c)]:
+            control.update()
+            control.param.needs_redraw = False
 
 
         self.ui.batch.draw()
@@ -185,21 +187,20 @@ class Ui(object):
             control.update()
 
 def set_from_kwargs(ob, args, kwargs):
-    print(kwargs)
     for key, value in kwargs.items():
-        print(key, value)
         if key in args:
             setattr(ob, key, value)
 
 class UiControl(object):
 
     LABELSIZE = 0.4
-
-    def __init__(self, ui, x=0, y=0, w=1, h=16, title=''):
+    HEIGHT = 16
+    
+    def __init__(self, ui, x=0, y=0, w=1, h=0, title=''):
         self.x = x
         self.y = y
         self.w = w
-        self.h = h
+        self.h = self.HEIGHT if h == 0 else h
 
         self.active = False
 
@@ -263,13 +264,17 @@ class UiControl(object):
             v.delete()
     
     # override in subclasses
+    def height(self):
+        return self.h
+
     def position_label(self):
         self.label.anchor_y = 'baseline'
         self.label.x = self.x
         self.label.y = self.y+4
+        self.label.width = self.w
 
         self.label.text = self.title
-        if self.w > 10:
+        if self.w > 10 and len(self.title) > 1:
             while self.label.content_width > self.w - 14:
                 self.label.text = self.label.text[1:]
 
@@ -320,12 +325,10 @@ class UiLayout(UiControl):
         self.items = []
         self.x = x
 
-        #print((**kwargs)
-
         # XXX: Check me
         #self.y = y
         #self.w = w
-        #set_from_kwargs(self, ('bg', 'w'), kwargs)
+        set_from_kwargs(self, ('y', 'w'), kwargs)
         #print(self.y)
 
         self.h = 0
@@ -361,7 +364,7 @@ class UiLayout(UiControl):
                 item.y = y
                 item.layout()
 
-            y -= item.h + self.PADDING
+            y -= item.height() + self.PADDING
             item.y = y
             item.x = x
             
@@ -374,7 +377,7 @@ class UiLayout(UiControl):
     def update(self):
         if self.bg == False: return
 
-        col = [0.5,0.5,0.5,0.7]
+        col = [0.4,0.4,0.4,0.7]
         outline_col = [.2,.2,.2, 0.3]
 
         x = self.x+self.pad - 4
@@ -391,12 +394,11 @@ class UiLayout(UiControl):
         self.layout()
         return layout
 
-    def addParameter(self, ui, param, ptype=None, **kwargs):
-        if type(param) != parameter.Parameter:
-            raise AttributeError('Not a Parameter object')
-
-        if ptype is not None:
-            controltype = ptype
+    def addParameter(self, ui, param, ctype=None, **kwargs):
+        if ctype is not None:
+            controltype = ctype
+        elif param.enum is not None:
+            controltype = EnumControl
         elif param.type in ui.control_types['numeric']:
             controltype = NumericControl
         elif param.type in ui.control_types['toggle']:
@@ -441,27 +443,6 @@ class UiLayout(UiControl):
         
         self.layout()
 
-class UiAttrSequence(object):
-    def __getitem__(self, key):
-        at = getattr(self.object, self.attr)
-
-        if hasattr(at, "__getitem__"):
-            return at.__getitem__(key)
-        else:
-            return at
-
-    def __setitem__(self, key, value):
-        at = getattr(self.object, self.attr)
-
-        if hasattr(at, "__setitem__"):
-            return at.__setitem__(key, value)
-        else:
-            return setattr(self.object, self.attr, value)
-
-    def __init__(self, object, attr):
-        self.object = object
-        self.attr = attr
-
 class UiAttrControl(UiControl):
     
     def __init__(self, ui, param=None, object=None, attr='', vmin=0, vmax=100, subtype=None, **kwargs):
@@ -469,36 +450,75 @@ class UiAttrControl(UiControl):
         
         self.param = self.object = None
         self.attr = ''
+        self.subtype = subtype
 
         if param is not None:
             self.param = param
             self.len = param.len
             self.title = param.title if self.title == '' else self.title
+            self.subtype = param.subtype
         elif hasattr(object, attr):
             self.object = object
             self.attr = attr
             self.len = attr_len(getattr(object, attr))
             self.title = self.attr.capitalize() if self.title == '' else self.title
         else:
-            raise ValueError("Invalid attribute provided: %s" % attr)
+            pass
+            #raise ValueError("Invalid attribute provided: %s" % attr)
 
-        if param is not None:
-            self.values = UiAttrSequence(self.param.param_storage, "data")
-        else:
-            self.values = UiAttrSequence(self.object, self.attr)
-        
         self.min = vmin
         self.max = vmax
-        self.subtype = subtype
         
         self.label.text = self.title
+
+    def getval(self, sub=None):
+        # Parameter interface
+        if self.param is not None:
+            return self.param.getval(sub=sub)
+
+        # or modify attribute values directly
+        attr = getattr(self.object, self.attr)
+        if self.len > 1 and sub is not None:
+            return attr[sub]
+        else:
+            return attr
     
     def limited(self, val, newval):
         if type(val) in ('float', 'int'):
             return min(self.max, max(self.min, newval))
         else:
             return newval
+    
+    def setval(self, newval, sub=None):
+        # Parameter interface
+        if self.param is not None:
+            return self.param.setval(newval, sub=sub)
 
+        # or modify attribute values directly
+        attr = getattr(self.object, self.attr)
+        if self.len > 1 and sub is not None:
+            attr[sub] = self.limited( attr[sub], newval )
+        else:
+            attr = self.limited(attr, newval)
+        
+        setattr(self.object, self.attr, attr)
+
+    def subw(self):
+        return (self.w*(1-self.LABELSIZE)) / float(self.len)
+    def subx(self, i):
+        iw = self.subw()
+        return int( self.x + self.LABELSIZE*self.w + i*self.subw() )
+
+    def point_inside_sub(self, x, y):
+        w = (1-self.LABELSIZE)*self.w / float(self.len)
+        offsetx = self.x + self.LABELSIZE*self.w
+        
+        for i in range(self.len):
+            x1 = offsetx + i*w
+            x2 = offsetx + (i+1)*w
+            if x1 < x < x2 and self.y < y < self.y+self.h:
+                return i
+        return None
 
 class UiTextEditControl(UiAttrControl):
     
@@ -556,16 +576,18 @@ class UiTextEditControl(UiAttrControl):
                 val = float(doc.text)
                 if self.subtype == UiControls.ANGLE:
                     val = math.radians(val)
-                self.values[i] = val
+                self.setval(val, sub=i)
             except:
                 pass
 
     def text_from_val(self):
         for i, doc in enumerate(self.documents):
+            val = self.getval(sub=i)
+            
             if self.subtype == UiControls.ANGLE:
-                doc.text = u"%.2f\xB0" % math.degrees(self.values[i]) 
+                doc.text = u"%.2f\xB0" % math.degrees(val) 
             else:
-                doc.text = "%.2f" % self.values[i]
+                doc.text = "%.2f" % val
 
     def textedit_begin(self, s=0):
         self.activate()
@@ -616,7 +638,7 @@ class ToggleControl(UiAttrControl):
 
     def update(self):
         
-        if self.values[0]:
+        if self.getval():
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
             coltext = [255]*4
@@ -649,8 +671,74 @@ class ToggleControl(UiAttrControl):
             self.deactivate()
     
     def toggle(self):
-        self.values[0] = not self.values[0]
+        self.setval( not self.getval() )
         self.update()
+
+class EnumControl(UiAttrControl):
+
+    def __init__(self, ui, *args, **kwargs):
+        super(EnumControl, self).__init__(ui, *args, **kwargs)
+        
+        if self.title == '':
+            self.LABELSIZE = 0.0
+
+        self.len = len(self.param.enum)
+
+        self.itemlabels = []
+        for item in self.param.enum:
+            itemlabel = pyglet.text.Label(item[0],
+                        batch=ui.batch,
+                        group=ui.groups['label'],
+                        x=0, y=0, width=self.subw(), height=self.h,
+                        **UiControls.font_style )
+            self.itemlabels.append(itemlabel)
+
+
+    def position_label(self):
+        super(EnumControl, self).position_label()
+        
+        for i, itemlabel in enumerate(self.itemlabels):
+            item = self.param.enum[i]
+            itemlabel.text = item[0]
+            itemlabel.width = self.subw()
+            itemlabel.anchor_y = 'baseline'
+            itemlabel.anchor_x = 'center'
+            itemlabel.x = int(self.subx(i) + itemlabel.width/2.0)
+            itemlabel.y = self.y+4
+
+    def update(self):
+        for i, item in enumerate(self.param.enum):
+            w = self.subw()
+            selected = (item[1] == self.getval())
+
+            if selected:
+                col1 = [0.35]*3 + [1.0]
+                col2 = [0.30]*3 + [1.0]
+                outline_col = [.2,.2,.2, 1.0]
+                coltext = [255]*4
+            else:
+                col1 = [0.5]*3 + [1.0]
+                col2 = [0.6]*3 + [1.0]
+                outline_col = [.25,.25,.25, 1.0]
+                coltext = [0,0,0,255]
+
+            x = self.subx(i)
+            if i == 0:
+                corners = '03'
+            elif i == len(self.param.enum)-1:
+                corners = '12'
+            else:
+                corners = ''
+            self.add_shape_geo( roundbase(x, self.y, w, self.h, 3, col1, col2, index=i, corners=corners) )
+            self.add_shape_geo( roundoutline(x, self.y, w, self.h, 3, outline_col, index=i, corners=corners) )
+        
+            self.itemlabels[i].color = coltext
+
+    def on_mouse_press(self, x, y, buttons, modifiers):
+        s = self.point_inside_sub(x, y)
+        if s != None:
+            if buttons & pyglet.window.mouse.LEFT:
+                self.setval( self.param.enum[s][1] )
 
 class PickerWindow(pyglet.window.Window):
     def __init__(self, parentcontrol, *args, **kwargs):
@@ -663,8 +751,8 @@ class PickerWindow(pyglet.window.Window):
         self.ui = Ui(self, overlay=False)
         self.ui.layout.x = 0
         self.ui.layout.wf = 1.0
-        self.ui.layout.addParameter(self.ui, self.param, ptype=ColorWheel)
-        self.ui.layout.addParameter(self.ui, self.param, ptype=NumericControl)
+        self.ui.layout.addParameter(self.ui, self.param, type=ColorWheel)
+        self.ui.layout.addParameter(self.ui, self.param, type=NumericControl)
 
         glClearColor(0.4, 0.4, 0.4, 1.0)
 
@@ -720,13 +808,13 @@ class ColorWheel(UiAttrControl):
         self.h = 128
 
     def update(self):
-        col = self.values[:]
+        col = self.getval()[:]
         h, s, v = colorsys.rgb_to_hsv(*col)
 
         self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h, v) )
 
     def set_color(self, x, y):
-        col = self.values[:]
+        col = self.getval()[:]
         hue, sat, val = colorsys.rgb_to_hsv(*col)
 
         r = float(self.h * 0.5)
@@ -742,7 +830,7 @@ class ColorWheel(UiAttrControl):
 
         rgb = parameter.Color3(*colorsys.hsv_to_rgb(h, s, val))
 
-        self.values[:] = rgb
+        self.setval(rgb)
         
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if buttons & pyglet.window.mouse.LEFT:
@@ -756,7 +844,8 @@ class ColorWheel(UiAttrControl):
 class ColorSwatch(UiAttrControl):
 
     def update(self):
-        col = list(self.values) + [1.0]
+        col = list(self.getval())
+        col = col + [1.0]
         outline_col = [.2,.2,.2, 1.0]
 
         w = self.w*(1-self.LABELSIZE)
@@ -793,17 +882,6 @@ class NumericControl(UiTextEditControl):
         
         if self.title == '':
             self.LABELSIZE = 0.0
-
-    def point_inside_sub(self, x, y):
-        w = (1-self.LABELSIZE)*self.w / float(self.len)
-        offsetx = self.x + self.LABELSIZE*self.w
-        
-        for i in range(self.len):
-            x1 = offsetx + i*w
-            x2 = offsetx + (i+1)*w
-            if x1 < x < x2 and self.y < y < self.y+self.h:
-                return i
-        return None
 
     def update(self):
         self.text_from_val()
@@ -864,7 +942,7 @@ class NumericControl(UiTextEditControl):
 
     def on_mouse_drag_setval(self, dx):
         sensitivity = (self.max - self.min) / 500.0
-        self.values[self.sliding] += + sensitivity*dx   # XXX
+        self.setval( self.getval(sub=self.sliding) + sensitivity*dx, sub=self.sliding )
         self.text_from_val()
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
@@ -928,16 +1006,35 @@ class ActionControl(UiControl):
             self.func(*self.argslist, **self.kwargsdict)
             self.deactivate()
 
-class LabelControl(UiControl):
-    def __init__(self, ui, title='', **kwargs):
-        super(LabelControl, self).__init__( ui, **kwargs )
-        self.title = title
-        
-    
-    # def update(self):
-    #     super(LabelControl, self).update()
-    #     self.label.text = self.title
-    #     if self.w > 10:
-    #         while self.label.content_width > self.w:
-    #             self.label.text = self.label.text[:-1]
-    # 
+class LabelControl(UiAttrControl):
+
+    def calc_label(self):
+        super(LabelControl, self).position_label()
+        self.label.width = self.w
+        self.label.multiline = True
+        self.label.anchor_y = 'baseline'
+
+        if self.param is not None:
+            self.label.text = self.title + str(self.param.getval())
+        else:
+            self.label.text = self.title
+
+        self.h = math.ceil(self.label.content_height / float(UiControl.HEIGHT)) * UiControl.HEIGHT
+        self.label.y += self.h - UiControl.HEIGHT
+
+    def height(self):
+        # update height based on given width
+        self.calc_label()
+        return self.h
+
+    def update(self):
+        self.calc_label()
+
+'''
+class HistogramControl(UiAttrControl):
+
+    def height(self):
+        return 64
+
+
+'''
