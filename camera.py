@@ -94,7 +94,7 @@ class Camera(object):
 
     def update_projection(self):
         width, height = self.window.get_size()
-        self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
+        self.persp_matrix = Matrix4.new_perspective(self.fov, width / float(height), self.clipnear, self.clipfar)
 
     def update(self):
         self.matrixinv = self.matrix.inverse()
@@ -109,7 +109,7 @@ class Camera(object):
         newcenter = ob.bbmin + diam*0.5
         offset = newcenter - self.center
 
-        dist = (abs(diam)*0.35) / math.tan(math.radians(self.fov*0.5))
+        dist = (abs(diam)*0.5) / math.tan(self.fov*0.5)
 
         self.center = newcenter
         m = self.matrix
@@ -119,7 +119,7 @@ class Camera(object):
         self.update()
 
     def __init__(self, window):
-        self.fov = 50.
+        self.fov = math.radians(50)
         self.clipnear = 0.1
         self.clipfar = 100000
         
@@ -150,7 +150,7 @@ class Camera(object):
         h = Vector3(*self.matrix[0:3])
         v = Vector3(*self.matrix[4:7])
         
-        half_v = math.tan(math.radians(self.fov)*0.5) * self.clipnear
+        half_v = math.tan(self.fov)*0.5 * self.clipnear
         win = self.window.get_size()
         aspect = win[0] / float(win[1])
         half_h = half_v * aspect
@@ -171,7 +171,7 @@ class Camera(object):
         glViewport(0, 0, width, height)
         
         # match openGL format
-        self.persp_matrix = Matrix4.new_perspective(math.radians(self.fov), width / float(height), self.clipnear, self.clipfar)
+        self.persp_matrix = Matrix4.new_perspective(self.fov, width / float(height), self.clipnear, self.clipfar)
 
         
         
