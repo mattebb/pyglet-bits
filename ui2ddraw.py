@@ -33,19 +33,43 @@ import numpy as np
 
 np.set_printoptions(precision=3,suppress=True)
 
+
+
+# copied from cgkit
+# planeHammersley
+def planeHammersley(n):
+    """Yields n Hammersley points on the unit square in the xy plane.
+
+    This function yields a sequence of n tuples (x,y) which
+    represent a point on the unit square. The sequence of points for
+    a particular n is always the same.  When n changes an entirely new
+    sequence will be generated.
+    
+    This function uses a base of 2.
+    """
+    for k in range(n):
+        u = 0
+        p=0.5
+        kk = k
+        while kk>0:
+            if kk & 1:
+                u += p
+            p *= 0.5
+            kk >>= 1
+        v = (k+0.5)/n
+        yield (u, v)
+
+aasamples = 6
+hammersley_pts = np.array(list(planeHammersley(aasamples)))
+
 def aajitter(seq, colors, sc=1.0):
-    samples = 16
-    
     ar = np.array(seq).reshape(-1,2)
-    jitter_ar = ar.copy()
-    
-    for i in range(1, samples):
-        j = ar + np.array([sc*random(), sc*random()])
-        jitter_ar = np.concatenate((jitter_ar, j))
+    jitter_ar = np.tile(ar, (aasamples,1))
+    jitter_ar += np.repeat(hammersley_pts, len(ar), axis=0)
 
     colors = np.array(colors).reshape(-1,4)
-    colors *= np.array( [1,1,1, 1.0/samples] )
-    colors = np.tile(colors, (samples,1))
+    colors *= np.array( [1,1,1, 1.0/aasamples] )
+    colors = np.tile(colors, (aasamples,1))
 
     return ( list(jitter_ar.flat), list(colors.flat) )
 
@@ -192,6 +216,40 @@ def colorwheel(x, y, w, h, v):
             'vertices': wheel,
             'colors': colors,
             'tex_coords': tex_coords
+            }
+
+def histogram(x, y, w, h, array, c, index=0):
+    a = array
+
+    xmin = a[:,0].min()
+    ymin = a[:,1].min()
+    xmax = a[:,0].max()
+    ymax = a[:,1].max()
+    xw = xmax - xmin
+    yh = ymax - ymin
+
+    a[:,0] = (a[:,0] - xmin) * (w/xw) + x
+    a[:,1] = (a[:,1] - ymin) * (h/yh) + y
+
+    # repeat and make every 2nd y coord equal to y, 
+    # in order to make gl_quad_strip
+    a = a.repeat(2, axis=0)
+    a[1::2,1] = y
+
+    hist = [x,y] + list(a.flat) + [x+w,y]
+    hist = strip_fix(hist, 2)
+    
+    colors = c*(len(hist)//2)
+
+    hist, colors = aajitter(hist, colors)
+
+
+    return {'id':'additive_histogram%d' % index,
+            'len': len(hist)//2,
+            'mode': GL_QUAD_STRIP,
+            'vertices': hist,
+            'colors': colors,
+            'data_update': 'stream'
             }
 
 
