@@ -64,9 +64,14 @@ class CameraHandler(object):
                 
             if buttons & mouse.RIGHT:
                 s = -0.05
+
                 m = self.camera.matrix
+                dist = (Point3(*m[12:15]) - self.camera.center) * 0.1
+                # dist = abs(dist)
+
                 zaxis = Vector3(0,0,1)
-                m.translate(*(zaxis*s*dx))
+                tx = zaxis*s*dx + zaxis*s*dx*dist
+                m.translate(*tx)
                 #self.camera.center -= zaxis*s*dx
 
             
