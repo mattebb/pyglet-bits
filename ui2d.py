@@ -24,6 +24,7 @@
 # ##### END MIT LICENSE BLOCK #####
 
 import parameter
+from parameter import Histogram
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
@@ -31,6 +32,7 @@ from shader import Shader
 from ui2ddraw import *
 import euclid
 import colorsys
+import numpy as np
 
 class uiGroup(pyglet.graphics.OrderedGroup):
     def __init__(self, order, window, **kwargs):
@@ -59,6 +61,15 @@ class uiBlendGroup(uiGroup):
     def set_state(self):
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    
+    def unset_state(self):
+        glDisable(GL_BLEND)
+
+class uiAdditiveGroup(uiGroup):
+    def set_state(self):
+        glEnable(GL_BLEND)
+        #glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
     
     def unset_state(self):
         glDisable(GL_BLEND)
@@ -167,7 +178,7 @@ class Ui(object):
         self.groups['control'] = uiGroup(3, window)
         self.groups['label'] = uiGroup(10, window, parent=self.groups['control'])
         self.groups['outline'] = uiBlendGroup(5, window, parent=self.groups['control'])
-        
+        self.groups['additive'] = uiAdditiveGroup(5, window, parent=self.groups['control'])
         self.groups['wheel'] = uiShaderGroup(3, window, ColorWheel.vertex_shader, ColorWheel.fragment_shader, parent=self.groups['control'])
         
         self.control_types = {}
@@ -175,7 +186,8 @@ class Ui(object):
         self.control_types['color'] = []
         self.control_types['toggle'] = [bool,]
 
-        self.fps_display = pyglet.clock.ClockDisplay()
+        self.fps_display = pyglet.window.FPSDisplay(window)
+
         ww, wh = self.window.get_size()
         self.layout = UiLayout(self, y=wh, w=ww, wf=layoutw, pad=10)
         
@@ -224,9 +236,9 @@ class UiControl(object):
         
         shapegeo['vertices'] = list(vertices.flat)
         
-        if shapegeo['id'] in self.vertex_lists.keys():
+        if id in self.vertex_lists.keys():
             if self.vertex_lists[id].get_size() != shapegeo['len']:
-                self.vertex_list.resize(shapegeo['len'])
+                self.vertex_lists[id].resize(shapegeo['len'])
                 
             self.vertex_lists[id].vertices = shapegeo['vertices']
             self.vertex_lists[id].colors = shapegeo['colors']
@@ -238,11 +250,15 @@ class UiControl(object):
                 group = self.ui.groups['outline']
             elif 'wheel' in shapegeo['id']:
                 group = self.ui.groups['wheel']
+            elif 'additive' in shapegeo['id']:
+                group = self.ui.groups['additive']
             else:
                 group = self.ui.groups['control']
 
-            attributes = [('v3f/static', shapegeo['vertices']), \
-                          ('c4f/static', shapegeo['colors'])]
+            data_update = shapegeo['data_update'] if 'data_update' in shapegeo.keys() else 'static'
+
+            attributes = [('v3f/%s' % data_update, shapegeo['vertices']), \
+                          ('c4f/%s' % data_update, shapegeo['colors'])]
             
             if 'tex_coords' in shapegeo.keys():
                 attributes.append( ('t2f/static', shapegeo['tex_coords']) )
@@ -251,6 +267,10 @@ class UiControl(object):
                                              shapegeo['mode'],
                                              group,
                                              *attributes)
+    def del_shape_geo(self, id):
+        for id, vertex_list in [(k,v) for k,v in self.vertex_lists.items() if id in k]:
+            vertex_list.delete()
+            del self.vertex_lists[id]
 
     def point_inside(self, x, y):
         if x < self.x:          return False
@@ -274,9 +294,9 @@ class UiControl(object):
         self.label.width = self.w
 
         self.label.text = self.title
-        if self.w > 10 and len(self.title) > 1:
-            while self.label.content_width > self.w - 14:
-                self.label.text = self.label.text[1:]
+        #if self.w > 10 and len(self.title) > 1:
+        #    while self.label.content_width > self.w - 14:
+        #        self.label.text = self.label.text[1:]
 
     def reposition(self):
         self.position_label()
@@ -405,6 +425,8 @@ class UiLayout(UiControl):
             controltype = ToggleControl
         elif param.type in ui.control_types['color']:
             controltype = ColorSwatch
+        elif param.type == Histogram:
+            controltype = HistogramControl
 
         control = controltype(ui, param=param, vmin=param.min, vmax=param.max, **kwargs)
         self.items.append(control)
@@ -471,10 +493,26 @@ class UiAttrControl(UiControl):
         
         self.label.text = self.title
 
+    def limited(self, val, newval):
+        if type(val) in ('float', 'int'):
+            return min(self.max, max(self.min, newval))
+        else:
+            return newval
+
+    @property
+    def value(self):
+        return self.getval()
+    @value.setter
+    def value(self, value):
+        self.setval(value)
+
     def getval(self, sub=None):
         # Parameter interface
         if self.param is not None:
-            return self.param.getval(sub=sub)
+            if sub is None:
+                return self.param.value
+            else:
+                return self.param.values[sub]
 
         # or modify attribute values directly
         attr = getattr(self.object, self.attr)
@@ -482,17 +520,16 @@ class UiAttrControl(UiControl):
             return attr[sub]
         else:
             return attr
-    
-    def limited(self, val, newval):
-        if type(val) in ('float', 'int'):
-            return min(self.max, max(self.min, newval))
-        else:
-            return newval
-    
+
     def setval(self, newval, sub=None):
         # Parameter interface
         if self.param is not None:
-            return self.param.setval(newval, sub=sub)
+            if sub is None:
+                self.param.value = newval
+            else:
+                self.param.values[sub] = newval
+            return
+            
 
         # or modify attribute values directly
         attr = getattr(self.object, self.attr)
@@ -638,7 +675,7 @@ class ToggleControl(UiAttrControl):
 
     def update(self):
         
-        if self.getval():
+        if self.value:
             col1 = [0.35]*3 + [1.0]
             col2 = [0.30]*3 + [1.0]
             coltext = [255]*4
@@ -671,7 +708,7 @@ class ToggleControl(UiAttrControl):
             self.deactivate()
     
     def toggle(self):
-        self.setval( not self.getval() )
+        self.setval( not self.value )
         self.update()
 
 class EnumControl(UiAttrControl):
@@ -709,7 +746,7 @@ class EnumControl(UiAttrControl):
     def update(self):
         for i, item in enumerate(self.param.enum):
             w = self.subw()
-            selected = (item[1] == self.getval())
+            selected = (item[1] == self.value)
 
             if selected:
                 col1 = [0.35]*3 + [1.0]
@@ -808,13 +845,13 @@ class ColorWheel(UiAttrControl):
         self.h = 128
 
     def update(self):
-        col = self.getval()[:]
+        col = self.value[:]
         h, s, v = colorsys.rgb_to_hsv(*col)
 
         self.add_shape_geo( colorwheel(self.x, self.y, self.w, self.h, v) )
 
     def set_color(self, x, y):
-        col = self.getval()[:]
+        col = self.value[:]
         hue, sat, val = colorsys.rgb_to_hsv(*col)
 
         r = float(self.h * 0.5)
@@ -844,7 +881,7 @@ class ColorWheel(UiAttrControl):
 class ColorSwatch(UiAttrControl):
 
     def update(self):
-        col = list(self.getval())
+        col = list(self.value)
         col = col + [1.0]
         outline_col = [.2,.2,.2, 1.0]
 
@@ -1015,7 +1052,7 @@ class LabelControl(UiAttrControl):
         self.label.anchor_y = 'baseline'
 
         if self.param is not None:
-            self.label.text = self.title + str(self.param.getval())
+            self.label.text = self.title + str(self.param.value)
         else:
             self.label.text = self.title
 
@@ -1030,11 +1067,28 @@ class LabelControl(UiAttrControl):
     def update(self):
         self.calc_label()
 
-'''
+
 class HistogramControl(UiAttrControl):
 
     def height(self):
-        return 64
+        self.h = 64
+        return self.h
 
+    def update(self):        
+        colors = [[1,0,0,0.7],[0,1,0,0.7],[0,0,1,0.7]]
 
-'''
+        hist = self.value
+
+        if hasattr(self, 'prev_arrays'):
+            if self.prev_arrays != len(hist.arrays):
+                self.del_shape_geo('histogram')
+        self.prev_arrays = len(hist.arrays)
+       
+        for i, hchannel in enumerate(hist.arrays):
+            geo = histogram(self.x, self.y, self.w, self.h, hchannel, colors[i], i)
+            self.add_shape_geo( geo )
+
+    def activate(self):
+        pass
+    def deactivate(self):
+        pass
