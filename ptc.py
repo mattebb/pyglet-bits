@@ -32,7 +32,7 @@ from pyglet.gl import *
 from pyglet.window import mouse, key
 from object3d import Object3d, filename_frame
 from shader import Shader
-from parameter import Parameter
+from parameter import Parameter, Histogram
 from keys import keys
 
 import ctypes
@@ -43,6 +43,8 @@ import partio
 
 glsl_util = ''.join(open('util.glsl').readlines())
 
+tempcache = {}
+histogram_cache = {}
 
 class PtcHandler(object):
     ''' Handle user interaction (mouse/keyboard input) '''
@@ -59,9 +61,8 @@ class PtcHandler(object):
             cursor = self.window.get_system_mouse_cursor(self.window.CURSOR_DEFAULT)
             self.window.set_mouse_cursor(cursor)
 
-    def on_mouse_release(self, x, y, buttons, modifiers):
-        if buttons & pyglet.window.mouse.LEFT and \
-            (modifiers & pyglet.window.key.LCTRL or modifiers & pyglet.window.key.RCTRL):
+    def on_mouse_press(self, x, y, buttons, modifiers):
+        if buttons & mouse.LEFT and modifiers & key.MOD_CTRL:
 
             ray = self.scene.camera.project_ray(x, y)
             pts = []
@@ -84,18 +85,16 @@ class PtcHandler(object):
 
         if keys[key.E]:
             if buttons & mouse.LEFT:
-                Ptc.exposure.setval( Ptc.exposure.getval() + dx*0.01 )
+                Ptc.exposure.value = Ptc.exposure.value + dx*0.01
                 return pyglet.event.EVENT_HANDLED
         if keys[key.Y]:
             if buttons & mouse.LEFT:
-                Ptc.gamma.setval( Ptc.gamma.getval() + dx*0.01 )
+                Ptc.gamma.value = Ptc.gamma.value + dx*0.01
                 return pyglet.event.EVENT_HANDLED
 
 
 def valid_file(filename):
     return os.path.exists(filename) and os.path.getsize(filename) > 10000
-
-tempcache = {}
 
 class Ptc(Object3d):
 
@@ -170,9 +169,9 @@ class Ptc(Object3d):
         glDeleteBuffers(1, self.vbo_col_id)
 
     def update_visibility(self):
-        if self.visible.getval() == False:
+        if self.visible.value == False:
             self.delete_buffers()
-        elif self.visible.getval() == True:
+        elif self.visible.value == True:
             if not glIsBuffer(self.vbo_vert_id) and not glIsBuffer(self.vbo_col_id):
                 self.init_buffers()
             self.update_buffers()
@@ -193,16 +192,16 @@ class Ptc(Object3d):
         self.num_particles = Parameter(default=0, title='Num particles: ')
         self.attributes = Parameter(default='', title='', update=self.read_ptc_attrs_data)
         self.attr_stats = Parameter(default='', title='')
+        self.histogram = Parameter(default=Histogram(), title='')
+        self.show_statistics = Parameter(default=True, title='Update Stats')
         
         # create VBOs
         self.init_buffers()
 
-        ## load ptc, store in self.verts/self.cols, update VBOs if loaded
-        #self.update(scene.time, scene.frame.getval())
-
-        # open ptc and load attribute info
-        self.frame = scene.frame.getval()
+        # load ptc, store in self.verts/self.cols, update VBOs if loaded
+        self.frame = scene.frame.value
         self.read_ptc_attrs_data()
+
 
     def read_ptc_attrs_data(self):
         ptc = self.open_ptc()
@@ -216,7 +215,6 @@ class Ptc(Object3d):
     def read_partio(self, filename):
         if filename[-7:] == '.pdb.gz':
             global tempcache
-
             import tempfile
             import gzip
 
@@ -245,17 +243,61 @@ class Ptc(Object3d):
             return None
             
         ptc = self.read_partio(self.filename)
-        if ptc is None:
-            return None
+        if ptc is None: return None
 
         # Retrieve attribute info
         self.numparts = ptc.numParticles()
-        self.num_particles.setval( self.numparts )
+        self.num_particles.value = self.numparts
         self.attrs = {}
         for i in range(ptc.numAttributes()):
             self.attrs[ptc.attributeInfo(i).name] = ptc.attributeInfo(i)
 
         return ptc
+
+    def calc_attribute_stats(self, attr_array, count, attr_name):
+        if self.show_statistics.value:
+
+            if count == 3:
+                a = attr_array.reshape(-1,3)
+                self.attr_stats.value = 'Min:  %.3f %.3f %.3f \nMax: %.3f %.3f %.3f \nAvg:  %.3f %.3f %.3f' % \
+                    (a[:,0].min(), a[:,1].min(), a[:,2].min(), \
+                    a[:,0].max(), a[:,1].max(), a[:,2].max(), \
+                    a[:,0].mean(), a[:,1].mean(), a[:,2].mean() )
+
+                if self.filename+attr_name in histogram_cache.keys():
+                    self.histogram.value = histogram_cache[self.filename+attr_name]
+                else:
+                    histogram = Histogram()
+                    for i in range(3):
+                        h, bins = np.histogram(a[:,i], bins=64)
+                        if attr_name in ('Cd', '_radiosity'):
+                            h = np.power(h, 1/2.2)  # force gamma 2.2 in histogram for colours
+                        hist = np.column_stack((bins[1:], h))
+                        histogram.arrays.append( hist )
+                    self.histogram.value = histogram
+                    histogram_cache[self.filename+attr_name] = self.histogram.value
+
+            elif count == 1:
+                a = attr_array
+                self.attr_stats.value = 'Min:  %.3f \nMax: %.3f \nAvg:  %.3f' % \
+                    (a.min(), a.max(), a.mean())
+
+                if self.filename+attr_name in histogram_cache.keys():
+                    self.histogram.value = histogram_cache[self.filename+attr_name]
+                else:
+                    h, bins = np.histogram(a, bins=64)
+                    hist = np.column_stack((bins[1:], h))   # somethign nicer for the bins?
+                    histogram = Histogram()
+                    histogram.arrays = [hist]
+                    self.histogram.value = histogram
+                    histogram_cache[self.filename+attr_name] = self.histogram.value
+            else:
+                self.attr_stats.value = ''
+
+        else:
+            self.attr_stats.value = ''
+            self.histogram.value = Histogram()
+
 
     def read_ptc_data(self, ptc):
         '''Read point cloud data into numpy arrays '''
@@ -266,9 +308,10 @@ class Ptc(Object3d):
             posattr = self.attrs['position']
 
         colattr = None
-        userattr = self.attributes.getval()
+        userattr = self.attributes.value
         if userattr != '' and userattr in self.attrs.keys():
             colattr = self.attrs[userattr]
+            aname = userattr
         else:
             if 'Cd' in self.attrs.keys():
                 aname = 'Cd'
@@ -277,50 +320,28 @@ class Ptc(Object3d):
             elif 'velocity' in self.attrs.keys():
                 aname = 'velocity'
             colattr = self.attrs[aname]
-            self.attributes.setval( aname )
-
+            self.attributes.data = aname    # XXX bypassing update function.. needs better implementation
 
         # load position and colour data
-        if hasattr(ptc, "getNDArray"):
-            # using an addition to partio py api
+        if hasattr(ptc, "getNDArray"):  # using an addition to partio py api
             self.verts = ptc.getNDArray(posattr)
             if colattr is not None:
-                self.cols = ptc.getNDArray(colattr)
-                ''' XXX fix bug in partio api first
-                print(colattr.count)
-                if colattr.count == 1:
-                    self.cols = self.cols.reshape(-1,3)
-                    self.cols[:,1] = self.cols[:,0]
-                    self.cols[:,2] = self.cols[:,0]
-                    self.cols.reshape(-1,1)
-                '''
-        elif hasattr(ptc, "getArray"):
-            # using an addition to partio py api
-            self.verts = np.array(ptc.getArray(posattr))
-            if colattr is not None:
-                self.cols = np.array(ptc.getArray(colattr))
+                cols = ptc.getNDArray(colattr)
         else:
             self.verts = np.array([ ptc.get(posattr, i) for i in range(self.numparts)])
             if colattr is not None:
-                self.cols =  self.verts([ ptc.get(colattr, i) for i in range(self.numparts)])
+                cols =  self.verts([ ptc.get(colattr, i) for i in range(self.numparts)])
         del ptc
-        
-        # XXX: Fix with partio fix
-        if colattr.count == 3:
-            c = self.cols.reshape(-1,3)
-            self.attr_stats.setval('Min: %.3f %.3f %.3f \nMax: %.3f %.3f %.3f \nAvg: %.3f %.3f %.3f' % \
-                (c[:,0].min(), c[:,1].min(), c[:,2].min(), \
-                c[:,0].max(), c[:,1].max(), c[:,2].max(), \
-                c[:,0].mean(), c[:,1].mean(), c[:,2].mean() ))
-        else:
-            self.attr_stats.setval('')
-        
+
+        self.cols = cols.repeat(3) if colattr.count == 1 else cols
+        self.ptc_loaded = True
+
         # calculate bbox min and max
         v = self.verts.reshape(-1,3)
         self.bbmin = Point3( np.min(v[:,0]), np.min(v[:,1]), np.min(v[:,2]) )
         self.bbmax = Point3( np.max(v[:,0]), np.max(v[:,1]), np.max(v[:,2]) )
 
-        self.ptc_loaded = True
+        self.calc_attribute_stats(cols, colattr.count, aname)
 
         
     def update(self, time, frame, dt=0):
@@ -367,25 +388,23 @@ class Ptc(Object3d):
         return Vector3(*l)
 
     def draw(self, time=0, camera=None):
-        if not self.visible.getval():
+        if not self.visible.value or not self.ptc_loaded:
             return
-        if not self.ptc_loaded:
-            return
-
-        m = self.matrix()
 
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-        glPointSize(self.ptsize.getval())
+        # bind glsl uniforms
+        glPointSize(self.ptsize.value)
         self.shader.bind()
-        self.shader.uniformf('gamma', self.gamma.getval())
-        self.shader.uniformf('exposure', self.exposure.getval())
-        self.shader.uniformf('hueoffset', self.hueoffset.getval())
-        self.shader.uniformf('decimate', self.decimate.getval())
-        self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
+        self.shader.uniformf('gamma', self.gamma.value)
+        self.shader.uniformf('exposure', self.exposure.value)
+        self.shader.uniformf('hueoffset', self.hueoffset.value)
+        self.shader.uniformf('decimate', self.decimate.value)
+        self.shader.uniform_matrixf('modelview', camera.matrixinv * self.matrix())
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
+        # bind and draw vertex buffers
         glEnableClientState(GL_VERTEX_ARRAY)
         glBindBuffer(GL_ARRAY_BUFFER, self.vbo_vert_id)
         glVertexPointer(3, GL_FLOAT, 0, 0)
@@ -399,7 +418,6 @@ class Ptc(Object3d):
         glDisableClientState(GL_VERTEX_ARRAY)
         glDisableClientState(GL_COLOR_ARRAY)
 
-        # self.batch.draw()
         self.shader.unbind()
 
         glDisable(GL_BLEND)
