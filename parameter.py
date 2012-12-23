@@ -31,6 +31,13 @@ import euclid
 class Color3(euclid.Vector3):
     pass
 
+class Histogram(object):
+    def __init__(self):
+        self.arrays = []
+        self.min = 0
+        self.max = 1
+
+
 def attr_len(attr):
     # if attr is subscriptable
     if hasattr(attr, "__getitem__"):
@@ -49,33 +56,42 @@ class Parameter(object):
     
     def __init__(self, object=None, attr='', enum=None, subtype=None, update=None, title='', default=None, vmin=0.0, vmax=1.0):
 
-        if object != None and attr != '':
-            if not hasattr(object, attr):
-                raise ValueError("Invalid attribute provided: %s" % attr)
-            self.storage = self.EXTERNAL
-            self.object = object
-            self.attr = attr
-            self.title = self.attr.capitalize()
-            self.type = type(getattr(self.object, self.attr))
-        else:
-            self.storage = self.INTERNAL
-            self.param_storage = ParameterStorage(default)
-            self.object = self.param_storage
-            self.attr = "data"
-            self.title = title
-            self.type = type(self.param_storage.data)
+        self.title = title
+        
+        self.data = default
+        self.type = type(self.data)
+        self.len = attr_len(self.data)
 
         self.min = vmin
         self.max = vmax
         self.enum = enum
         self.subtype = subtype
 
+        self.values = pv(self)
         self.update = update
-
-        self.len = attr_len(getattr(self.object, self.attr))
-        
         self.needs_redraw = False
+        
 
+    def limited(self, val, newval):
+        if type(val) in ('float', 'int'):
+            return min(self.max, max(self.min, newval))
+        else:
+            return newval
+    @property
+    def value(self):
+        return self.data
+
+    @value.setter
+    def value(self, value):
+        self.data = self.limited(self.data, value)
+        self.param_edited()
+
+    def param_edited(self):
+        self.needs_redraw = True
+        if self.update is not None:
+            self.update()
+
+    '''
     def getval(self, sub=None):
         attr = getattr(self.object, self.attr)
         
@@ -84,11 +100,7 @@ class Parameter(object):
         else:
             return attr
     
-    def limited(self, val, newval):
-        if type(val) in ('float', 'int'):
-            return min(self.max, max(self.min, newval))
-        else:
-            return newval
+
     
     def setval(self, newval, sub=None):
         attr = getattr(self.object, self.attr)
@@ -104,27 +116,22 @@ class Parameter(object):
         
         if self.update is not None:
             self.update()
-'''
-    #def __get__(self, instance, owner):
-    #    return instance
+    '''
 
-    # def __getattribute__(self, name):
-    #     if name == 'param':
-    #         return self
-    #     else:
-    #         return self.__dict__[name]
+class pv(object):
 
-    # @property
-    # def val(self):
-    #     return self.getval()
+    def __getitem__(self, key):
+        if hasattr(self.param.data, "__getitem__") and len(self.param.data) > 0:
+            return self.param.data.__getitem__(key)
+        else:
+            return self.param.data
 
-    # @val.setter
-    # def setv(self, value):
-    #     self.setval(value)
+    def __setitem__(self, key, value):
+        if hasattr(self.param.data, "__setitem__") and len(self.param.data) > 0:
+            self.param.data.__setitem__(key, value)
+        else:
+            self.param.data = value
+        self.param.param_edited()
 
-    # def __getitem__(self, key):
-    #     return self.getval(sub=key)
-
-    # def __setitem__(self, key, value):
-    #     self.setval(value, sub=key)
-'''
+    def __init__(self, param):
+        self.param = param

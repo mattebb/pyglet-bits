@@ -65,8 +65,8 @@ class Scene(object):
         self.fps = 24.0
         self.time = 0   # in seconds?
         self.frame = Parameter(default=1, vmin=0, vmax=100, title='Frame', update=self.update_time)
-        self.sframe = 1
-        self.eframe = 100
+        self.sframe = Parameter(default=1, vmin=0, vmax=100, title='Start Frame')
+        self.eframe = Parameter(default=100, vmin=0, vmax=100, title='End Frame')
 
         self.ui3d_shader = Shader(self.vertex_shader)
         self.ui3d_batch = pyglet.graphics.Batch()
@@ -107,17 +107,17 @@ class Scene(object):
             self.calculate_bounds()
             self.camera.focus(self)
         if symbol == pyglet.window.key.RIGHT:
-            self.frame.setval( self.frame.getval() + 1 )
+            self.frame.value += 1
         if symbol == pyglet.window.key.LEFT:
-            self.frame.setval( self.frame.getval() - 1 )
+            self.frame.value -= 1
 
     def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
         if not (modifiers & pyglet.window.key.MOD_ALT or \
                 modifiers & pyglet.window.key.MOD_CTRL or \
                 modifiers & pyglet.window.key.MOD_SHIFT or \
                 keys[pyglet.window.key.SPACE]):
-            if buttons & mouse.LEFT:
-                self.frame.setval( self.frame.getval() + dx*0.05 )
+            if buttons & mouse.MIDDLE:
+                self.frame.value +=  dx*0.05
                 return pyglet.event.EVENT_HANDLED
 
 
@@ -144,18 +144,18 @@ class Scene(object):
 
     def update_time(self):            
         for ob in self.objects:
-            ob.update(self.time, self.frame.getval())
+            ob.update(self.time, self.frame.value)
 
     def update(self, dt):
-        if self.playback.getval() == self.PLAYING:
+        if self.playback.value == self.PLAYING:
             #self.time += dt
 
             # loop playback
             #frame = self.time * self.fps
-            frame = self.frame.getval() + 1
-            if frame > self.eframe:
-                frame = self.sframe
-            self.frame.setval(frame)
+            frame = self.frame.value + 1
+            if frame > self.eframe.value:
+                frame = self.sframe.value
+            self.frame.value = frame
 
             self.update_time()
 
@@ -188,7 +188,7 @@ class Object3d(object):
 
     def matrix(self):
         # stupid rotate_euler taking coords out of order!
-        return Matrix4.new_translate(*self.translate.getval()).rotate_euler(*self.rotate.getval().yzx).scale(*self.scale.getval())
+        return Matrix4.new_translate(*self.translate.value).rotate_euler(*self.rotate.value.yzx).scale(*self.scale.value)
 
     def transform_verts(self, verts, matrix):
         ''' Transform a numpy array of vertex positions by a matrix '''
@@ -246,7 +246,7 @@ class Object3d(object):
 # XXX
 def myfunc():
     monkey = Raw(scene)
-    monkey.translate = testp.getval()[:]
+    monkey.translate = testp.value[:]
     ui.layout.addParameter(ui, monkey.color)
     #return 
     #return ui3d.Grid(2, 6, batch)
@@ -321,7 +321,7 @@ class Raw(Object3d):
 
         self.shader.bind()
         self.shader.uniformf('time', time)
-        self.shader.uniformf('color', *self.color.getval())
+        self.shader.uniformf('color', *self.color.value)
         self.shader.uniform_matrixf('modelview', camera.matrixinv * m)
         self.shader.uniform_matrixf('projection', camera.persp_matrix)
         
