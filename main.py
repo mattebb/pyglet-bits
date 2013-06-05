@@ -59,31 +59,32 @@ def init():
     # load ptc objects from cmd line
     import ptc
     from ptc import Ptc
-    
+    import re
 
     # find first frame of sequences
     maxframe = 0
     minframe = 9999999999
 
     for filename in sys.argv[1:]:
-        seeking = False
-        for i in xrange(10000):
-            fi = filename_frame(filename, i)
+        f_re = re.search('\.([0-9]+)\.', filename)
+        if f_re is None:
+            continue
+        f = int(f_re.group(1))
+        minframe = f
+
+        for i in xrange(f, f+10000):
+            #fi = filename_frame(filename, i)
+            fi = re.sub('(.+\.)[0-9]+(\..+)', '\g<1>%04d\g<2>'%i, filename)
+            
             if ptc.valid_file(fi):
-                seeking = True
-                if i < minframe:
-                    minframe = i
-                #break
+                maxframe = i
             else:
-                if seeking:
-                    if i > maxframe:
-                        maxframe = i
-                    seeking = False
-                    break
+                break
 
     scene.sframe.value = minframe
     scene.eframe.value = maxframe
     scene.frame.value =  minframe
+
 
     scene.pointclouds = []
     for filename in sys.argv[1:]:
