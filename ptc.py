@@ -129,10 +129,10 @@ class Ptc(Object3d):
         gl_FragColor.b = pow(rgba.b*gain, 1.0/gamma);
         gl_FragColor.a = 1.0;
 
-        if (decimate < 1.0) {
-            float r  = rand(gl_PrimitiveID);
-            if ( r > decimate) gl_FragColor.a = 0.0;
-        }
+        //if (decimate < 1.0) {
+        //    float r  = rand(gl_PrimitiveID);
+        //    if ( r > decimate) gl_FragColor.a = 0.0;
+        // }
 
     }
     '''
@@ -269,7 +269,7 @@ class Ptc(Object3d):
                 else:
                     histogram = Histogram()
                     for i in range(3):
-                        h, bins = np.histogram(a[:,i], bins=64)
+                        h, bins = np.histogram(a[:,i], bins=64, new=True)
                         if attr_name in ('Cd', '_radiosity'):
                             h = np.power(h, 1/2.2)  # force gamma 2.2 in histogram for colours
                         hist = np.column_stack((bins[1:], h))
@@ -323,14 +323,14 @@ class Ptc(Object3d):
             self.attributes.data = aname    # XXX bypassing update function.. needs better implementation
 
         # load position and colour data
-        if hasattr(ptc, "getNDArray"):  # using an addition to partio py api
-            self.verts = ptc.getNDArray(posattr)
+        if hasattr(ptc, "getArray"):  # using an addition to partio py api
+            self.verts = ptc.getArray(posattr)
             if colattr is not None:
-                cols = ptc.getNDArray(colattr)
+                cols = ptc.getArray(colattr)
         else:
             self.verts = np.array([ ptc.get(posattr, i) for i in range(self.numparts)])
             if colattr is not None:
-                cols =  self.verts([ ptc.get(colattr, i) for i in range(self.numparts)])
+                cols = np.array([ ptc.get(colattr, i) for i in range(self.numparts)])
         del ptc
 
         self.cols = cols.repeat(3) if colattr.count == 1 else cols
